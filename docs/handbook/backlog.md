@@ -18,6 +18,14 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 8 | **Cache the public pages at the edge for about a minute**, serving the cached copy if the origin fails. | Most visitors would never wake the app, and the site would survive a brief origin failure. Needs care: pages that depend on the signed-in owner must not be cached. | M |
 | 9 | **Decide whether to keep building the arm64 image.** | Cloud Run only runs amd64; arm64 serves the Kubernetes path and Arm laptops. Keep (cheap, cross-compiled) or drop (simpler). A decision, not work. | S |
 
+## From Part 1b: Cloud Run and the edge
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 16 | **Make the demos edge-only too,** or decide they don't need it: Redacted and GhostChat would check an edge secret the way Lighthouse does (a small middleware in each). | They answer on their `*.run.app` addresses, bypassing Cloudflare and its client-IP header, so their rate limits can be dodged there. | M |
+| 17 | **Send each origin only its own edge secret** (one secret per service, or send it to Lighthouse only). | The Worker currently adds Lighthouse's secret to requests for the demos as well. | S |
+| 18 | **Longer-lived, smarter edge caching for static files** (fingerprinted file names with a long cache time). | The cache is per Cloudflare location and lasts an hour, so a low-traffic site still fetches static files from the origin often. | M |
+
 ## Carried over (noted before the review started)
 
 | # | What | Why | Size |

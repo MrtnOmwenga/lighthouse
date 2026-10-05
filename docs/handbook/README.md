@@ -10,7 +10,7 @@ an assistant that answers questions about the portfolio by looking things up her
 | # | Page | What it covers |
 |---|---|---|
 | 1a | [Shipping the apps: the pipeline](01a-pipeline.md) | From a push to a running container: build, sign, keyless deploy, migrations |
-| 1b | Shipping the apps: Cloud Run and the edge | *to be written* |
+| 1b | [Shipping the apps: Cloud Run and the edge](01b-cloud-run-and-edge.md) | How a request reaches a container; the Worker, the services, identities, secrets, data, and the free-tier choices |
 | 2 | Watching the apps: probes, scheduler, incidents | *to be written* |
 | 3 | Data model and tenant isolation | *to be written* |
 | 4 | Auth and sandboxes | *to be written* |
