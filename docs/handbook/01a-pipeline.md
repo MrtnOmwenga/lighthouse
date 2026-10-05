@@ -228,6 +228,14 @@ service runs the image that was built, signed and copied in this run.
 **What happens to the live site if a migration fails?**
 Nothing: the job stops before the service is updated, and the previous revision keeps serving.
 
+**Does the GitHub token go to Cloud Run?**
+No. For deploying, it goes to Google's token-exchange service, which verifies it and returns an
+access credential for the deployer service account, valid for about an hour; that credential is
+attached to each Google request in the job (pushing the image, running the migration job, updating
+the service). For signing, the same kind of token goes to Sigstore's certificate authority, which
+returns a ten-minute certificate used once to sign the image. Pushing to GHCR uses a third
+credential, the `GITHUB_TOKEN` GitHub gives every job.
+
 **Where do the app's settings and secrets come from, if the pipeline only sets the image?**
 Terraform (`deploy/cloudrun`) defines each service's environment, secret references, limits and
 identity. The pipeline and Terraform each own one thing, so they don't overwrite each other.

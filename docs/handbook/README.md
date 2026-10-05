@@ -19,6 +19,8 @@ an assistant that answers questions about the portfolio by looking things up her
 | 7 | The public site | *to be written* |
 | 8 | Testing and CI | *to be written* |
 
+What the review found that still needs building is in the [build list](backlog.md).
+
 ## Conventions
 
 - **Front matter** on every page: `project`, `topics`, `sources` (the files it describes) and
