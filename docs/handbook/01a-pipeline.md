@@ -56,6 +56,53 @@ slower).
   and the signature is bound to that identity in a public transparency log. That's why the
   workflow has `id-token: write`.
 
+## What is the difference between the identity token and the signature?
+
+They answer different questions, at different times.
+
+- **The identity token** answers "who is asking, right now?" GitHub issues it to a running job; it
+  lasts minutes; it is shown once to get something (a Google credential, or a signing
+  certificate) and then it is gone. It's like showing ID at a door.
+- **The signature** answers "where did this image come from?", for as long as the image exists.
+  It is attached to the image's digest and says "the release workflow of this repository produced
+  exactly this content". Anyone can check it later, without GitHub being involved. It's like a
+  seal on a parcel.
+
+Keyless signing connects the two: cosign shows the identity token to Sigstore's certificate
+authority, which issues a certificate valid for about ten minutes naming the workflow; cosign signs
+the digest with it and the signature is recorded in a public log. No long-lived key ever exists.
+
+Signing matters when something *verifies* it: a deploy step or a cluster policy that refuses any
+image not signed by this workflow, which would stop an image swapped in the registry. Here the
+signature is produced but not yet verified (see Known gaps).
+
+## What is a digest?
+
+A digest is the SHA-256 hash of an image's contents, written `sha256:8e0e58c8…`. The same content
+always gives the same digest, and any change, however small, gives a different one, so a digest
+*is* the content's identity. A tag (`:main`, `:1790669030-a71356c`) is only a name pointing at a
+digest, and can be pointed somewhere else later.
+
+It is the same relationship as a git branch name and a commit hash. Registries check the digest
+when an image is pulled, so content that doesn't match is rejected.
+
+A multi-architecture image has one digest for the index (the list of variants) and one per
+variant. That's why the deploy job asks the registry for the digest after copying the amd64
+variant, instead of reusing the build's digest.
+
+## What does "distroless, non-root" mean?
+
+Most images start from a small Linux distribution: a shell, a package manager, tools like `curl`.
+An attacker who finds a bug in the app usually uses exactly those to look around and download more
+tools. A distroless image contains none of them: only the program, TLS root certificates and time
+zone data. There is nothing to run except the app itself, far less for vulnerability scanners to
+flag, and the image is about 7 MB.
+
+Non-root means the process runs as an unprivileged user (id 65532). It can't modify system files,
+and a flaw that let it escape the container wouldn't hand over root on the host.
+
+The cost: there is no shell to open inside a running container. Debugging is done from logs.
+
 ## Why are there no cloud keys in GitHub?
 
 The usual way to let CI deploy is a service-account key file stored as a secret. It never expires,
@@ -125,6 +172,26 @@ never overlap (`concurrency`).
 For the Kubernetes path (`deploy/k8s`), which targets Arm hosts, and so the published image runs
 on Arm laptops. Cross-compiling makes it nearly free.
 
+## How do I see what happened on Google's side?
+
+- **The workflow itself:** `gcloud run jobs execute --wait` and `gcloud run services update` fail
+  the job if the migration or the new revision fails, so a red deploy job is the first signal.
+- **Migration runs:** `gcloud run jobs executions list --job lighthouse-migrate --region us-east4`
+  lists each run with its result; their output is in Cloud Logging
+  (`resource.type="cloud_run_job"`).
+- **Revisions:** `gcloud run revisions list --service lighthouse --region us-east4` shows each
+  deployed version, when, and whether it became ready.
+- **Requests and app logs:** Cloud Logging, `resource.type="cloud_run_revision"`.
+- **The scheduler:** `gcloud scheduler jobs describe lighthouse-tick --location us-east4` shows the
+  last attempt and its status.
+
+## What does the smoke test check?
+
+`GET /readyz` on the public address, through Cloudflare and the edge Worker, expecting 200 within a
+minute. `/readyz` pings the database with a two-second limit, so a 200 means: DNS, the edge, the
+new revision starting, its secrets, and its database connection all work. It doesn't exercise any
+feature.
+
 ## Known gaps
 
 - **Nothing forces code through CI before it deploys.** The release branches have no branch
@@ -135,6 +202,13 @@ on Arm laptops. Cross-compiling makes it nearly free.
   who checks it.
 - **No automatic rollback.** A failed smoke test fails the job, but the new revision keeps serving.
   Cloud Run keeps earlier revisions, so rolling back is one command, done by hand.
+- **Third-party actions are referenced by tag** (`@v3`, `@v7`), which their owners can move. A
+  compromised action would run inside the job that can deploy. Fix: pin each action to a commit
+  hash and let Dependabot update the pins.
+- **A failed migration's output isn't shown in the workflow log**; it has to be looked up in Cloud
+  Logging.
+- **Nothing watches Lighthouse from outside.** It monitors the other apps and itself, but if it is
+  down, nothing reports that (see the monitoring page).
 - **Migrations must tolerate the old code** for the seconds between the migration and the new
   revision taking traffic. Nothing enforces that discipline yet (add first, remove in a later
   release).
@@ -142,8 +216,10 @@ on Arm laptops. Cross-compiling makes it nearly free.
 ## Questions and answers
 
 **What would an attacker need to deploy to the project?**
-Write access to a release branch of one of the three repositories. There is no key to steal: Google
-issues a deploy credential only to a workflow running on those branches.
+Write access to a release branch of one of the three repositories (or control of an action the
+workflow runs). The facts in the token (repository, branch) are public, not secret; what protects
+the system is that only GitHub can sign a token stating them, and Google checks that signature.
+There is no key to steal.
 
 **What's the difference between deploying a tag and deploying a digest?**
 A tag is a movable name; a digest identifies the exact content. Deploying by digest guarantees the
