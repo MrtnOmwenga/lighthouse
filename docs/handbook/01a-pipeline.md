@@ -56,6 +56,30 @@ slower).
   and the signature is bound to that identity in a public transparency log. That's why the
   workflow has `id-token: write`.
 
+## How does a job get an identity token from GitHub?
+
+GitHub runs an identity service (`https://token.actions.githubusercontent.com`). It holds private
+signing keys and publishes the matching public keys at `/.well-known/jwks`.
+
+1. **GitHub knows who the job is because GitHub started it.** A push triggered the workflow, so
+   GitHub knows first-hand the repository, branch, commit, workflow and actor. The job's code
+   doesn't claim any of it.
+2. **The job is given a way to ask.** With `id-token: write`, GitHub puts an internal address and a
+   one-time access code in the job's environment, valid for that run only.
+3. **A step asks**, naming who the token is for (the *audience*): here, the Google identity pool.
+4. **GitHub writes the facts down and signs them** with its private key. The result is a JWT:
+   `iss` (GitHub's identity service), `aud`, `repository`, `ref`, `sha`, `workflow`, `actor`,
+   issue and expiry times, and more. The job chooses only the audience, and the token lasts
+   minutes.
+5. **The receiver verifies it without asking GitHub about the job:** it fetches GitHub's public
+   keys, checks the signature, the expiry and the audience, then applies its own rule to the facts.
+
+It can't be faked: changing a fact breaks the signature, GitHub fills in the facts itself (a fork
+gets a token naming the fork), and a stolen token expires in minutes and works for one audience.
+
+Lighthouse plays the receiver's part itself for Cloud Scheduler's tokens (`internal/oidc`, see the
+monitoring page).
+
 ## What is the difference between the identity token and the signature?
 
 They answer different questions, at different times.
