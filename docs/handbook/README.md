@@ -16,7 +16,7 @@ an assistant that answers questions about the portfolio by looking things up her
 | 4 | [Auth and sandboxes](04-auth-and-sandboxes.md) | Sessions and cookies, the owner's GitHub sign-in, cross-site request protection, how a sandbox is created and bounded |
 | 5 | [Privacy-friendly analytics](05-analytics.md) | Counting visitors without cookies or stored addresses: daily-salted pseudonyms, server-measured reading time, campaign tags, what's public |
 | 6 | [The console](06-console.md) | The Vue app embedded in the Go binary: how it is built and served, the JSON API and its errors, polling, pagination, and what is enforced where |
-| 7 | The public site | *to be written* |
+| 7 | [The public site](07-public-site.md) | Server-rendered pages, content as validated YAML, live figures joined from the monitors, how the status page is worked out, and the launch page that wakes a sleeping demo |
 | 8 | Testing and CI | *to be written* |
 
 What the review found that still needs building is in the [build list](backlog.md); the costed options for backups, redundancy and self-managed databases are in the [resilience plan](resilience-plan.md).
