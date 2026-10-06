@@ -4,8 +4,10 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -55,6 +57,9 @@ type Server struct {
 	// Drive, when checks are scheduled from outside, runs a tenant's due simulated checks as its
 	// console reads data, so a sandbox is checked while someone is watching it.
 	Drive func(ctx context.Context, tenantID string) int
+	// Checks runs a check on request: "check now" on a monitor, and trying settings before they
+	// are saved. Without it those endpoints don't exist.
+	Checks *monitor.Scheduler
 
 	pages     *template.Template
 	status    statusCache
@@ -117,6 +122,7 @@ func (s *Server) Handler() http.Handler {
 		return nil
 	}))
 	mux.HandleFunc("POST /api/sandbox", s.errs(s.createSandbox))
+	mux.HandleFunc("POST /api/sandbox/reset", s.signedIn(s.resetSandbox))
 	mux.HandleFunc("GET /api/me", s.signedIn(s.me))
 	mux.HandleFunc("GET /api/sign-in-options", s.signInOptions)
 	mux.HandleFunc("GET /api/session", s.session)
@@ -139,7 +145,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/my-status", s.signedIn(s.myStatus))
 	mux.HandleFunc("GET /api/monitors", s.signedIn(s.listMonitors))
 	mux.HandleFunc("POST /api/monitors", s.signedIn(s.createMonitor))
+	mux.HandleFunc("POST /api/monitors/test", s.signedIn(s.testMonitor))
 	mux.HandleFunc("GET /api/monitors/{id}", s.signedIn(s.getMonitor))
+	mux.HandleFunc("POST /api/monitors/{id}/check", s.signedIn(s.checkMonitor))
+	mux.HandleFunc("GET /api/overview", s.signedIn(s.overview))
 	mux.HandleFunc("PUT /api/monitors/{id}", s.signedIn(s.updateMonitor))
 	mux.HandleFunc("DELETE /api/monitors/{id}", s.signedIn(s.deleteMonitor))
 	mux.HandleFunc("GET /api/monitors/{id}/checks", s.signedIn(s.listChecks))
@@ -150,7 +159,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/incidents/{id}", s.signedIn(s.updateIncident))
 	mux.HandleFunc("POST /api/incidents/{id}/comments", s.signedIn(s.addComment))
 
-	return s.recoverer(s.logRequests(s.edgeOnly(securityHeaders(s.Config, s.sameOrigin(s.limitWrites(s.Auth.Middleware(mux)))))))
+	return withRequestID(s.recoverer(s.logRequests(s.edgeOnly(securityHeaders(s.Config, s.sameOrigin(s.limitWrites(s.Auth.Middleware(mux))))))))
+}
+
+type requestIDKey struct{}
+
+// withRequestID names each request, in the X-Request-Id response header and in its log lines, so
+// an error someone reports can be traced to what the server recorded about it.
+func withRequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw [8]byte
+		_, _ = rand.Read(raw[:])
+		id := hex.EncodeToString(raw[:])
+		w.Header().Set("X-Request-Id", id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
+	})
+}
+
+func requestID(r *http.Request) string {
+	id, _ := r.Context().Value(requestIDKey{}).(string)
+	return id
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +204,13 @@ func (s *Server) githubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// createSandbox starts a sandbox, or returns to the one this browser already has: asking twice
+// doesn't leave an abandoned tenant behind, and doesn't use up the visitor's allowance.
 func (s *Server) createSandbox(w http.ResponseWriter, r *http.Request) error {
+	if id, ok := auth.FromContext(r.Context()); ok && !id.Owner() {
+		left := int(time.Until(id.Expires).Minutes())
+		return writeJSON(w, http.StatusOK, map[string]any{"role": "sandbox", "expiresInMinutes": max(left, 0), "resumed": true})
+	}
 	if !s.sandboxes.allow(s.clientIP(r)) {
 		return errTooMany
 	}
@@ -184,6 +218,25 @@ func (s *Server) createSandbox(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return writeJSON(w, http.StatusCreated, map[string]any{"role": "sandbox", "expiresInMinutes": int(s.Config.SandboxTTL.Minutes())})
+}
+
+// resetSandbox puts a sandbox back to how it started: its monitors and incidents are removed and
+// the sample monitors added again. The session, and so the time left, stays as it was.
+func (s *Server) resetSandbox(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	if id.Owner() {
+		return errForbidden
+	}
+	err := s.inTenant(r, id, func(tx pgx.Tx) error {
+		if err := store.ClearTenant(r.Context(), tx); err != nil {
+			return err
+		}
+		return auth.SeedSandbox(r.Context(), tx, id.TenantID)
+	})
+	if err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
@@ -242,19 +295,36 @@ type problem struct {
 	status int
 	title  string
 	detail string
+	fields []fieldError // for an invalid request: what is wrong with which field
+}
+
+// fieldError is one problem with one field of a request, named as the request names it.
+type fieldError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
 }
 
 func (p problem) Error() string { return p.title }
 
 var (
-	errUnauthenticated = problem{http.StatusUnauthorized, "Sign in first", ""}
-	errForbidden       = problem{http.StatusForbidden, "Not allowed", ""}
-	errNotFound        = problem{http.StatusNotFound, "Not found", ""}
-	errTooMany         = problem{http.StatusTooManyRequests, "Too many requests", "Slow down and try again shortly."}
+	errUnauthenticated = problem{status: http.StatusUnauthorized, title: "Sign in first"}
+	errForbidden       = problem{status: http.StatusForbidden, title: "Not allowed"}
+	errNotFound        = problem{status: http.StatusNotFound, title: "Not found"}
+	errTooMany         = problem{status: http.StatusTooManyRequests, title: "Too many requests", detail: "Slow down and try again shortly."}
 )
 
 func invalid(detail string) problem {
-	return problem{http.StatusUnprocessableEntity, "Invalid request", detail}
+	return problem{status: http.StatusUnprocessableEntity, title: "Invalid request", detail: detail}
+}
+
+// invalidFields is an invalid request with every problem listed by field. The detail repeats them
+// in one line, for clients that only show that.
+func invalidFields(fields []fieldError) problem {
+	parts := make([]string, len(fields))
+	for i, f := range fields {
+		parts[i] = f.Field + ": " + f.Message
+	}
+	return problem{status: http.StatusUnprocessableEntity, title: "Invalid request", detail: strings.Join(parts, " "), fields: fields}
 }
 
 func (s *Server) errs(h func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
@@ -272,20 +342,28 @@ func (s *Server) errs(h func(http.ResponseWriter, *http.Request) error) http.Han
 		case errors.Is(err, auth.ErrForbidden):
 			p = errForbidden
 		case errors.As(err, &pg) && pg.Code == "23505":
-			p = problem{http.StatusConflict, "Already exists", "That slug is already in use."}
+			p = problem{status: http.StatusConflict, title: "Already exists", detail: "That slug is already in use.",
+				fields: []fieldError{{"slug", "Already in use."}}}
 		case errors.As(err, &pg) && (pg.Code == "23514" || pg.Code == "22001"):
 			p = invalid("A value is outside its allowed range.")
 		case errors.Is(err, context.Canceled):
 			return
 		default:
-			s.Log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
-			p = problem{http.StatusInternalServerError, "Something went wrong", ""}
+			s.Log.Error("request failed", "id", requestID(r), "method", r.Method, "path", r.URL.Path, "err", err)
+			p = problem{status: http.StatusInternalServerError, title: "Something went wrong"}
 		}
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(p.status)
 		body := map[string]any{"status": p.status, "title": p.title}
 		if p.detail != "" {
 			body["detail"] = p.detail
+		}
+		if len(p.fields) > 0 {
+			body["errors"] = p.fields
+		}
+		if p.status >= 500 {
+			// What the visitor can quote, and what finds the log line that explains it.
+			body["requestId"] = requestID(r)
 		}
 		_ = json.NewEncoder(w).Encode(body)
 	}
@@ -419,7 +497,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			return
 		}
-		s.Log.Info("request", "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
+		s.Log.Info("request", "id", requestID(r), "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
 	})
 }
 
@@ -430,7 +508,7 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 				if v == http.ErrAbortHandler {
 					panic(v)
 				}
-				s.Log.Error("panic", "path", r.URL.Path, "panic", v)
+				s.Log.Error("panic", "id", requestID(r), "path", r.URL.Path, "panic", v)
 				http.Error(w, "internal error", http.StatusInternalServerError)
 			}
 		}()

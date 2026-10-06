@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/MrtnOmwenga/lighthouse/internal/auth"
+	"github.com/MrtnOmwenga/lighthouse/internal/monitor"
 	"github.com/MrtnOmwenga/lighthouse/internal/status"
 	"github.com/MrtnOmwenga/lighthouse/internal/store"
 )
@@ -100,6 +103,79 @@ func (s *Server) updateMonitor(w http.ResponseWriter, r *http.Request, id auth.I
 		return err
 	}
 	return writeJSON(w, http.StatusOK, m)
+}
+
+// onRequestTimeout bounds a check made while someone waits for the answer; a probe may take up to
+// 30 s, longer than the server lets a response take.
+const onRequestTimeout = 25 * time.Second
+
+// checkMonitor checks a monitor now and returns the monitor and that check: the console calls it
+// after saving, and from "Check now".
+func (s *Server) checkMonitor(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	mid, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	if s.Checks == nil {
+		return errNotFound
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), onRequestTimeout)
+	defer cancel()
+	check, err := s.Checks.CheckNow(ctx, id.TenantID, mid)
+	if errors.Is(err, monitor.ErrPaused) {
+		return problem{status: http.StatusConflict, title: "Paused", detail: "Resume the monitor to check it."}
+	}
+	if err != nil {
+		return err
+	}
+	var m store.Monitor
+	if err := s.inTenant(r, id, func(tx pgx.Tx) (err error) { m, err = store.GetMonitor(r.Context(), tx, mid); return }); err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, map[string]any{"monitor": m, "check": check})
+}
+
+// testMonitor tries a monitor's settings without saving them or recording anything. The settings
+// pass the same validation as a saved monitor, so a sandbox can only try simulated ones.
+func (s *Server) testMonitor(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	var in store.MonitorInput
+	if err := readJSON(w, r, &in); err != nil {
+		return err
+	}
+	if in.Name == "" {
+		in.Name = "test" // not part of what is being tried
+	}
+	in, err := normalize(in, id)
+	if err != nil {
+		return err
+	}
+	if s.Checks == nil {
+		return errNotFound
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), onRequestTimeout)
+	defer cancel()
+	res := s.Checks.Try(ctx, in)
+	out := map[string]any{"ok": res.OK, "latencyMs": res.Latency.Milliseconds()}
+	if res.StatusCode != 0 {
+		out["statusCode"] = res.StatusCode
+	}
+	if res.Failure != "" {
+		out["failure"] = res.Failure
+	}
+	return writeJSON(w, http.StatusOK, out)
+}
+
+// overview is everything the monitors screen shows, in one answer: the monitors and their figures.
+func (s *Server) overview(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	var list []store.Monitor
+	if err := s.inTenant(r, id, func(tx pgx.Tx) (err error) { list, err = store.ListMonitors(r.Context(), tx, false); return }); err != nil {
+		return err
+	}
+	page, err := status.BuildAll(r.Context(), s.Pool, id.TenantID, s.Now())
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, map[string]any{"monitors": list, "stats": page.Monitors})
 }
 
 func (s *Server) deleteMonitor(w http.ResponseWriter, r *http.Request, id auth.Identity) error {

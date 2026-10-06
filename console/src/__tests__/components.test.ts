@@ -6,13 +6,19 @@ import type { Check } from '../api';
 
 describe('ModeSwitch', () => {
   it('is a labelled radio group that reports the chosen mode', async () => {
-    const w = mount(ModeSwitch, { props: { mode: 'up', name: 'Checkout API' } });
+    const w = mount(ModeSwitch, { props: { mode: 'up', name: 'Checkout API', group: 'a1' } });
     expect(w.find('legend').text()).toContain('Checkout API');
     const radios = w.findAll('input[type="radio"]');
     expect(radios).toHaveLength(4);
     expect((radios[0]!.element as HTMLInputElement).checked).toBe(true);
     await radios[3]!.trigger('change');
     expect(w.emitted('change')).toEqual([['down']]);
+  });
+
+  it('groups its radio buttons by monitor, not by name', () => {
+    const a = mount(ModeSwitch, { props: { mode: 'up', name: 'API', group: 'one' } });
+    const b = mount(ModeSwitch, { props: { mode: 'up', name: 'API', group: 'two' } });
+    expect(a.find('input').attributes('name')).not.toBe(b.find('input').attributes('name'));
   });
 });
 

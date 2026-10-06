@@ -145,6 +145,29 @@ func DueSimulated(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
+// MakeDue brings a monitor's next check forward to now, so it can be claimed at once.
+func MakeDue(ctx context.Context, tx pgx.Tx, id string) error {
+	tag, err := tx.Exec(ctx, `UPDATE monitors SET next_check_at = now() WHERE id = $1`, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+// ClearTenant removes the tenant's monitors and incidents (and with them its checks and
+// timelines), leaving the tenant and its sessions.
+func ClearTenant(ctx context.Context, tx pgx.Tx) error {
+	// Monitors point at their open incident, and incidents at their monitor: let go of one side.
+	if _, err := tx.Exec(ctx, `UPDATE monitors SET open_incident_id = NULL WHERE open_incident_id IS NOT NULL`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM incidents`); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM monitors`)
+	return err
+}
+
 // ClaimMonitor moves a due monitor's next check into the future and returns it. Only one caller
 // wins: a monitor already claimed (by another worker or instance) returns ErrNotFound. slack is
 // as in DueMonitors.

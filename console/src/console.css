@@ -26,9 +26,24 @@ textarea { resize: vertical; font-family: var(--serif); font-size: 17px; }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--claret); outline-offset: 1px; }
 .link-out code { display: block; overflow-x: auto; white-space: nowrap; padding: 10px 12px; background: var(--paper); border: 1px dashed var(--muted); font-size: 14px; }
 
+.field-error { color: var(--bad); font-weight: 600; font-size: 14px; }
+input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--bad); border-width: 2px; }
+.form-grid .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-grid .pair input { min-width: 0; width: 100%; }
+.advanced summary { font: 600 15px var(--sans); cursor: pointer; padding: 10px 0; min-height: 44px; }
+.advanced .form-grid { margin-top: 8px; }
+.test-result { font: 600 15px var(--sans); }
+.test-result.up { color: var(--good); }
+.test-result.down { color: var(--bad); }
+.notice { font: 600 16px var(--sans); border-left: 4px solid var(--claret); padding: 8px 12px; background: var(--panel); }
+.view-head .actions { align-items: center; }
+.band-button { background: none; border: 1px solid rgba(255, 255, 255, 0.7); color: #fff; font: 600 14px var(--sans); padding: 6px 12px; min-height: 36px; cursor: pointer; }
+.band-button:hover { background: rgba(255, 255, 255, 0.15); }
+
 /* Tables */
 .console-table td { vertical-align: top; padding-top: 12px; padding-bottom: 12px; }
 .console-table .name a { font-weight: 700; text-decoration: none; font-size: 16px; }
+.console-table .num + th:not(.num), .console-table .num + td:not(.num) { padding-left: 24px; }
 .console-table .wrap-cell { white-space: normal; min-width: 220px; }
 
 /* Up / Slow / Flaky / Down */

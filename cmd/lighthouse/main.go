@@ -133,6 +133,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker, scheduler *monitor.Scheduler) http.Handler {
 	srv := web.New(cfg, pool, auth.New(pool, cfg), log, owner)
 	srv.Site = content
+	srv.Checks = scheduler
 	if tick != nil {
 		srv.Tick = tick
 		srv.TickVerifier = &oidc.Verifier{Audience: cfg.TickAudience, Email: cfg.TickCaller}

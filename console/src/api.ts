@@ -1,5 +1,6 @@
 // The console's view of Lighthouse's JSON API. Every call is same-origin with the session cookie;
-// errors come back as RFC 9457 problem details and are thrown as ApiError.
+// errors come back as RFC 9457 problem details and are thrown as ApiError, which says what to tell
+// the person: what to fix (by field), to wait, to sign in again, or what to quote in a report.
 
 export type Role = 'owner' | 'sandbox';
 export type Health = 'up' | 'down' | 'unknown';
@@ -106,41 +107,83 @@ export interface Report {
   devices: { label: string; visitors: number }[];
 }
 
+export interface FieldError { field: string; message: string }
+
 export class ApiError extends Error {
-  constructor(public status: number, public title: string, public detail?: string) {
-    super(detail ? `${title}: ${detail}` : title);
+  constructor(
+    public status: number, // 0: the request never got an answer
+    public title: string,
+    public detail?: string,
+    public fields: FieldError[] = [],
+    public requestId?: string,
+  ) {
+    super(describe(status, title, detail, requestId));
+  }
+
+  // The problems by field name, for a form to show beside its inputs.
+  byField(): Record<string, string> {
+    return Object.fromEntries(this.fields.map((f) => [f.field, f.message]));
   }
 }
 
+function describe(status: number, title: string, detail?: string, requestId?: string): string {
+  if (status === 0) return 'No answer from the server. Check your connection; this will retry by itself.';
+  if (status === 401) return 'Your session has ended. Sign in or start a sandbox again.';
+  if (status === 429) return 'Too many requests. Wait a few seconds and try again.';
+  if (status >= 500) return `Something went wrong on the server.${requestId ? ` If you report it, quote ${requestId}.` : ''}`;
+  return detail ? `${title}: ${detail}` : title;
+}
+
+// Called when the server says the session is gone, so the app can go back to the welcome page.
+let unauthorized: () => void = () => {};
+export function onUnauthorized(fn: () => void) { unauthorized = fn; }
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    credentials: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method,
+      credentials: 'same-origin',
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, 'Offline');
+  }
   if (!res.ok) {
     let title = res.statusText || 'Request failed';
     let detail: string | undefined;
+    let fields: FieldError[] = [];
+    let requestId = res.headers.get('X-Request-Id') ?? undefined;
     try {
       const p = await res.json();
       title = p.title ?? title;
       detail = p.detail;
+      fields = Array.isArray(p.errors) ? p.errors : [];
+      requestId = p.requestId ?? requestId;
     } catch { /* not JSON */ }
-    throw new ApiError(res.status, title, detail);
+    if (res.status === 401) unauthorized();
+    throw new ApiError(res.status, title, detail, fields, requestId);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
+export interface TestResult { ok: boolean; latencyMs: number; statusCode?: number; failure?: string }
+export interface Overview { monitors: Monitor[]; stats: StatusMonitor[] }
+
 export const api = {
   signInOptions: () => call<SignInOptions>('GET', '/api/sign-in-options'),
   session: () => call<{ signedIn: false } | ({ signedIn: true } & Me)>('GET', '/api/session'),
-  startSandbox: () => call<{ role: Role; expiresInMinutes: number }>('POST', '/api/sandbox'),
+  startSandbox: () => call<{ role: Role; expiresInMinutes: number; resumed?: boolean }>('POST', '/api/sandbox'),
+  resetSandbox: () => call<void>('POST', '/api/sandbox/reset'),
   devLogin: () => call<{ role: Role }>('POST', '/auth/dev'),
   logout: () => call<void>('POST', '/auth/logout'),
 
+  overview: () => call<Overview>('GET', '/api/overview'),
   monitors: () => call<Monitor[]>('GET', '/api/monitors'),
+  checkNow: (id: string) => call<{ monitor: Monitor; check: Check }>('POST', `/api/monitors/${id}/check`),
+  testMonitor: (m: MonitorInput) => call<TestResult>('POST', '/api/monitors/test', m),
   monitor: (id: string) => call<Monitor>('GET', `/api/monitors/${id}`),
   createMonitor: (m: MonitorInput) => call<Monitor>('POST', '/api/monitors', m),
   updateMonitor: (id: string, m: MonitorInput) => call<Monitor>('PUT', `/api/monitors/${id}`, m),
