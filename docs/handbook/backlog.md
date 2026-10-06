@@ -57,6 +57,23 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 41 | **One sandbox per browser, resumable** (Martin's idea, 2026-10-06): if the browser already has a live sandbox, "Start a sandbox" returns to it; show the time left; offer "reset" to replace it. Recognise the visitor by the existing first-party session cookie, not by browser or device fingerprinting. | Each press creates a new tenant and abandons the old one, and the only per-person limit is by network address. Fingerprinting would contradict the site's privacy stance (no tracking beyond what's necessary) and needs consent in the EU; the cookie already does the job and counts as strictly necessary. | M |
 | 42 | **Put the logs to work** (Martin's idea, 2026-10-06): log security events as their own structured entries (owner sign-in, refused sign-in, rejected tick, edge check failures, rate-limit hits, sandbox created); log-based alerts on the ones that matter (free in Cloud Logging); a daily digest of anything unusual, optionally summarised by an AI model. With items 34 (metrics) and 39 (audit trail). | Requests are logged and kept, and nothing reads them. | M |
 
+## Analytics that serve the job search (Martin, 2026-10-06; to decide after Part 5)
+
+The site's strict privacy stance was a design choice, not a requirement. It is the owner's
+portfolio, and he wants to learn from its traffic, legally. Whatever is added, the privacy page
+changes in the same commit to say exactly what is collected.
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 43 | **A tagged link per application, joined to the job-hunt tracker:** `?ref=<company>` on every application; a per-company view (came or not, what was read, for how long, which demos). | The capability exists (ref tags, a link maker); it isn't used systematically. No personal data. The strongest lever. | M |
+| 44 | **A notification when a tagged visit happens** (email or Telegram). | Tells the owner when a follow-up would land well. No personal data. | S |
+| 45 | **Richer events:** CV download, outbound clicks (GitHub, LinkedIn), story read to the end, guided tour completed. | Shows which projects hold attention, and so what to lead with. | M |
+| 46 | **Let visitors identify themselves:** a clear "hiring? get in touch" option, or the CV in exchange for an email address. | The best data is given voluntarily, and is unambiguously lawful. | M |
+| 47 | *(Last, with care)* **Company-level identification from the network address,** disclosed on the privacy page, with a written justification (legitimate interest). | Says which organisation visited. Addresses are personal data under EU and Kenyan law; limited value for people working from home. | M |
+
+Decided against: device fingerprinting and third-party trackers (both need consent banners in the
+EU, and add little beyond 43 to 45).
+
 ## From Part 1b: Cloud Run and the edge
 
 | # | What | Why | Size |
