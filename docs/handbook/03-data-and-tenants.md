@@ -211,6 +211,18 @@ Sandboxes are created by anonymous visitors, in seconds, and thrown away in two 
 database or schema per visitor is heavier, harder to migrate and slower to clean up. Rows with a
 policy cost nothing to create and vanish with one `DELETE` (everything else cascades).
 
+**Isn't answering "not found" for someone else's row security through obscurity?**
+No. Security through obscurity means the *only* protection is that an attacker doesn't know
+something (an address, how the system works). Here the protection is access control: knowing
+another tenant's monitor id gets you nothing, because the policy makes the row unreachable. Not
+revealing that the row exists is an extra privacy property on top: it stops someone confirming
+guesses about what other tenants have.
+
+**When would a database per tenant be the better design?**
+When tenants are few, large and long-lived, need their own backups and restores, must be kept
+apart for legal reasons, or could slow each other down. Here tenants are anonymous, created in
+seconds and deleted in two hours, so rows with a policy fit better.
+
 **What is the difference between `USING` and `WITH CHECK`?**
 `USING` decides which existing rows a statement can see and touch; `WITH CHECK` decides which new
 or changed rows it may write. Without `WITH CHECK`, a tenant could insert rows labelled as someone
