@@ -12,7 +12,7 @@ an assistant that answers questions about the portfolio by looking things up her
 | 1a | [Shipping the apps: the pipeline](01a-pipeline.md) | From a push to a running container: build, sign, keyless deploy, migrations |
 | 1b | [Shipping the apps: Cloud Run and the edge](01b-cloud-run-and-edge.md) | How a request reaches a container; the Worker, the services, identities, secrets, data, and the free-tier choices |
 | 2 | [Watching the apps: probes, the scheduler and incidents](02-monitoring.md) | What a probe checks, the SSRF guard, the database as the queue, the incident state machine, the external clock and its signed tokens |
-| 3 | Data model and tenant isolation | *to be written* |
+| 3 | [Data model and tenant isolation](03-data-and-tenants.md) | The tables, row-level security, the application's limited role, cross-tenant functions, constraints, and how isolation is tested |
 | 4 | Auth and sandboxes | *to be written* |
 | 5 | Privacy-friendly analytics | *to be written* |
 | 6 | The console | *to be written* |

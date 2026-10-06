@@ -39,6 +39,13 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 
 | 35 | **Check a monitor the moment it's saved, and offer a "Test" button** (Martin's idea, 2026-10-06): after creating or editing a monitor, run its first check at once and show the result beside it; let the settings be tried before saving. The test must go through the same address guard and rate limits as a scheduled check. | A new monitor is created as due but nothing runs it until the next round: up to 15 minutes on the live site, so a mistyped address or wrong expected status is only discovered much later. Builds on item 27. | M |
 
+## From Part 3: data model and tenant isolation
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 36 | **Daily summaries of the check history** (a small table of per-monitor, per-day counts and latency figures, filled by the clean-up step), used by the status pages. | Status figures are computed from the raw checks on every request, over a table that keeps 90 days. Fine now; it is the first thing that would slow down. | M |
+| 37 | **Exercise the "down" migrations in CI** (migrate up, down, up again on a scratch database). | The rollback scripts exist and have never been run. | S |
+
 ## From Part 1b: Cloud Run and the edge
 
 | # | What | Why | Size |
