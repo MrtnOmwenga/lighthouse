@@ -46,6 +46,14 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 36 | **Daily summaries of the check history** (a small table of per-monitor, per-day counts and latency figures, filled by the clean-up step), used by the status pages. | Status figures are computed from the raw checks on every request, over a table that keeps 90 days. Fine now; it is the first thing that would slow down. | M |
 | 37 | **Exercise the "down" migrations in CI** (migrate up, down, up again on a scratch database). | The rollback scripts exist and have never been run. | S |
 
+## From Part 4: auth and sandboxes
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 38 | **Name the session cookie with the `__Host-` prefix** (and the sign-in state cookie likewise). | The demos share Lighthouse's parent domain; a compromised demo page could set a cookie for the whole domain and plant a session in a visitor's browser. Browsers refuse a `__Host-` cookie not set by the exact address. | S |
+| 39 | **Record sign-ins:** an audit entry for each owner sign-in and each refused attempt, shown in the console, with an alert on refusals. | They are only in the request log today. | M |
+| 40 | **List and end the owner's sessions from the console** ("sign out everywhere"). | Signing out ends only the current session. | S |
+
 ## From Part 1b: Cloud Run and the edge
 
 | # | What | Why | Size |
