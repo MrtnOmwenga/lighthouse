@@ -62,12 +62,17 @@ these results are shown on a public page.
 
 ## What stops a monitor being pointed at something internal?
 
-Anyone can create a sandbox and add a monitor with any address. Without protection, they could
-point Lighthouse at addresses only it can reach (the cloud's metadata service, other internal
-services) and read the answers through the check results. That attack is called **server-side
-request forgery (SSRF)**.
+A monitor that makes real requests is a way to make *Lighthouse* send requests. Pointed at
+addresses only Lighthouse can reach (the cloud's metadata service, other internal services), it
+would leak their answers through the check results. That attack is called **server-side request
+forgery (SSRF)**. There are two layers against it.
 
-The guard (`guard` and `Blocked` in `probe.go`) refuses to connect to loopback, private,
+**First, who may create one.** Sandboxes can only create simulated monitors
+(`normalize` in `internal/web/validate.go` rejects anything else, and rejects the
+allow-private-network flag); only the signed-in owner can create a monitor that makes real
+requests. A URL must also be plain `http` or `https`, with a hostname and no embedded credentials.
+
+**Second, where a request may go,** whoever created the monitor. The guard (`guard` and `Blocked` in `probe.go`) refuses to connect to loopback, private,
 link-local, multicast and carrier-grade-NAT addresses. Where it runs is the important part: as a
 hook on the socket, **after** the hostname has been resolved, on the address actually being dialled.
 So it also catches:
@@ -76,6 +81,9 @@ So it also catches:
 - a hostname that resolves to a public address first and a private one later (DNS rebinding);
 - a redirect to an internal address (each hop makes a new connection, which is checked again; at
   most five redirects are followed).
+
+This second layer matters even though only the owner can create real monitors: it covers a
+compromised owner session, a mistake, and any future feature that lets others add addresses.
 
 A blocked attempt is recorded as `blocked`. The owner can switch the guard off per monitor
 (`AllowPrivate`), which the Kubernetes deployment uses to check services inside the cluster.
@@ -185,6 +193,28 @@ Anything else gets a 404, as if the endpoint didn't exist. There is no shared pa
 leak. It is about 150 lines of standard library, with tests for a wrong key, a wrong audience,
 another service account, an expired token, algorithm tricks and tampered claims.
 
+## How does this compare with Uptime Kuma, Prometheus and Grafana?
+
+- **Uptime Kuma** is the closest relative: a self-hosted uptime monitor with checks, status pages
+  and notifications to dozens of channels. It does more kinds of check and far more kinds of
+  alert. Lighthouse's monitoring core is a small version of the same idea, with things Kuma
+  doesn't aim at: isolated tenants (the sandbox), a scale-to-zero deployment, and a portfolio
+  built on the same data. For a company that just needs uptime monitoring, Kuma or a hosted
+  service is the right choice; Lighthouse exists to show how such a thing is built.
+- **Prometheus** answers a different question. Lighthouse looks at a service from outside ("does
+  it answer?"), which is *black-box* monitoring. Prometheus collects numbers from inside services
+  (request rates, error rates, latency distributions, memory), which is *white-box* monitoring: it
+  stores them as time series, queries them with PromQL and evaluates alert rules.
+- **Grafana** draws dashboards and manages alerts over data such as Prometheus's.
+
+They complement Lighthouse rather than replace it: it has no view inside the apps, and nothing
+watches Lighthouse itself. Both gaps are what metrics and an outside alerting system are for (see
+the build list).
+
+One constraint shapes any integration: Prometheus normally *pulls* metrics from a process that is
+always running, and these services sleep. On Cloud Run the metrics have to be *pushed*, for
+example at the end of each tick.
+
 ## Known gaps
 
 - **The sandbox doesn't work on the live deployment.** Sandbox monitors are meant to be checked
@@ -227,6 +257,11 @@ people to ignore alerts. The threshold is a setting per monitor.
 **What does "pure function" buy you here?**
 The rules for opening and resolving incidents can be tested exhaustively, with no database and no
 waiting, because `Next` depends only on its inputs.
+
+**A sandbox visitor tries to add a monitor for `http://localhost:5432`. What happens?**
+It is rejected when it is created: sandboxes may only have simulated monitors. If the owner added
+it, it would be saved, and every check would fail as `blocked`: the name resolves to a loopback
+address, and the guard refuses the connection at the moment of dialling.
 
 **What is SSRF, in one sentence?**
 Tricking a server into making requests to places only the server can reach, and reading the
