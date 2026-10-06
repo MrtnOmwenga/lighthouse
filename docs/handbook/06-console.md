@@ -174,6 +174,12 @@ polling and loads older pages on demand.
   Nothing fails if they drift apart.
 - **The behaviour switch groups its radio buttons by monitor name.** Names needn't be unique, so
   two monitors with the same name would share one group and interfere with each other.
+- **A release can strand an open tab.** Each screen is a separate hashed file fetched on first
+  visit. After a release the old files no longer exist, so a tab opened before it fails when it
+  navigates to a screen it hasn't loaded yet, until the page is reloaded.
+- **Errors can't be traced or pinned to a field.** There is no request id tying "Something went
+  wrong" to its log line; validation reports the first problem as one sentence, not per field; and
+  the console prints every failure the same way whatever its status.
 - **Some actions have no error handling:** changing mode on the detail screen, and "older
   incidents".
 - **Thin tests.** Two components and the helpers have unit tests; no screen does. The browser
@@ -212,6 +218,18 @@ hidden.
 **What happens on a new release to someone with the console open?**
 Their loaded app keeps working against the API. On their next full load they get a fresh
 `index.html` (never cached), which names the new hashed files.
+
+**Would rooms or publish/subscribe make server push cheap?**
+No. A room is the server's way of grouping connections; each browser still holds its own, and on
+Cloud Run an open connection is billed as a request that never ends. Polling is billed for the
+milliseconds each short request takes. Push would also need a shared channel once there is more
+than one instance.
+
+**Is one generic error message enough?**
+It is only used for failures nobody anticipated, so internals never reach the browser; expected
+failures (a bad value, a taken slug, not found, not allowed, too many requests) each have their
+own status and message. What is missing is a request id to trace the generic one, and per-field
+validation errors.
 
 **Why cursor pagination?**
 It stays fast at any depth and doesn't repeat or skip rows when new ones are added while someone
