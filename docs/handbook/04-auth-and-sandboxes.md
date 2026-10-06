@@ -63,9 +63,28 @@ would have hashes, not tokens, and a hash can't be sent as a cookie. Because the
 random, the hash can't be guessed backwards either. (Passwords need slower, salted hashes because
 people choose guessable ones; random tokens don't.)
 
-**Why a server-side session rather than a signed token (JWT)?** A session row can be deleted, so
-signing out really ends it, and an expired sandbox disappears with its tenant. A signed token is
-valid until it expires, whatever the server later wants.
+**Why a server-side session rather than a signed token (JWT)?** Think of two ways to run a
+cloakroom. With a **session**, you get a numbered ticket and the attendant keeps a list: to cancel
+a ticket, they cross it off. With a **signed token**, you get a stamped pass that says "valid
+until midnight" and nobody keeps a list: anyone can check the stamp without asking, which is fast
+and works across many doors, but a pass can't be cancelled before midnight unless a list of
+cancelled passes is kept, which is a list again.
+
+Lighthouse is one service that already has a database, and it needs to cancel: signing out must
+really end a session, and a sandbox's session must vanish when its tenant is deleted. So it keeps
+the list. Signed tokens earn their keep when many separate services need to check identity without
+all asking one database.
+
+## Can a session be renewed?
+
+No. A session has a fixed lifetime from the moment it starts (12 hours for the owner, 2 for a
+sandbox) and nothing extends it; there are no refresh tokens. The owner signs in again, which is
+one click through GitHub. For sandboxes the fixed lifetime is deliberate: it is what guarantees
+their data is deleted.
+
+(Refresh tokens belong to the signed-token design: a short-lived pass plus a longer-lived token
+that can be exchanged for a new pass, and revoked. The RBAC-API project uses rotating refresh
+tokens. The session equivalent is a *sliding* expiry, extended on each use.)
 
 ## How is the cookie protected?
 
@@ -162,6 +181,13 @@ always use HTTPS.
   compromised, it could plant its own `lh_session` in a visitor's browser (signing the owner into
   an attacker's sandbox without their noticing). Naming the cookie with the `__Host-` prefix makes
   browsers refuse any copy not set by Lighthouse's own address.
+- **Starting a sandbox always makes a new one.** A returning visitor whose cookie is still valid
+  goes back to their sandbox, but pressing "Start a sandbox" again creates a second tenant and
+  abandons the first until it expires. A visitor is recognised by the session cookie only; the
+  six-an-hour limit is per network address, which several people can share and one person can
+  change.
+- **The logs are written but not used.** Every request is logged as structured JSON (method, path,
+  status, duration) and kept by Cloud Logging; nothing watches them or raises an alarm.
 - **Two roles, checked in the handlers.** Owner or sandbox, with `id.Owner()` tests where they
   differ. Enough here; more roles would need a real permission model (which is what the RBAC-API
   project is).

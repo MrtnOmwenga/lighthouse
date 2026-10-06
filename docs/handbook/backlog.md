@@ -54,6 +54,9 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 39 | **Record sign-ins:** an audit entry for each owner sign-in and each refused attempt, shown in the console, with an alert on refusals. | They are only in the request log today. | M |
 | 40 | **List and end the owner's sessions from the console** ("sign out everywhere"). | Signing out ends only the current session. | S |
 
+| 41 | **One sandbox per browser, resumable** (Martin's idea, 2026-10-06): if the browser already has a live sandbox, "Start a sandbox" returns to it; show the time left; offer "reset" to replace it. Recognise the visitor by the existing first-party session cookie, not by browser or device fingerprinting. | Each press creates a new tenant and abandons the old one, and the only per-person limit is by network address. Fingerprinting would contradict the site's privacy stance (no tracking beyond what's necessary) and needs consent in the EU; the cookie already does the job and counts as strictly necessary. | M |
+| 42 | **Put the logs to work** (Martin's idea, 2026-10-06): log security events as their own structured entries (owner sign-in, refused sign-in, rejected tick, edge check failures, rate-limit hits, sandbox created); log-based alerts on the ones that matter (free in Cloud Logging); a daily digest of anything unusual, optionally summarised by an AI model. With items 34 (metrics) and 39 (audit trail). | Requests are logged and kept, and nothing reads them. | M |
+
 ## From Part 1b: Cloud Run and the edge
 
 | # | What | Why | Size |
