@@ -14,7 +14,7 @@ an assistant that answers questions about the portfolio by looking things up her
 | 2 | [Watching the apps: probes, the scheduler and incidents](02-monitoring.md) | What a probe checks, the SSRF guard, the database as the queue, the incident state machine, the external clock and its signed tokens |
 | 3 | [Data model and tenant isolation](03-data-and-tenants.md) | The tables, row-level security, the application's limited role, cross-tenant functions, constraints, and how isolation is tested |
 | 4 | [Auth and sandboxes](04-auth-and-sandboxes.md) | Sessions and cookies, the owner's GitHub sign-in, cross-site request protection, how a sandbox is created and bounded |
-| 5 | Privacy-friendly analytics | *to be written* |
+| 5 | [Privacy-friendly analytics](05-analytics.md) | Counting visitors without cookies or stored addresses: daily-salted pseudonyms, server-measured reading time, campaign tags, what's public |
 | 6 | The console | *to be written* |
 | 7 | The public site | *to be written* |
 | 8 | Testing and CI | *to be written* |
