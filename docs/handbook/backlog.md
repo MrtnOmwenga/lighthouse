@@ -27,6 +27,15 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 18 | **Longer-lived, smarter edge caching for static files** (fingerprinted file names with a long cache time). | The cache is per Cloudflare location and lasts an hour, so a low-traffic site still fetches static files from the origin often. | M |
 
 
+| 25 | **Rate limits that survive a restart and are shared between instances:** keep the counters in the database (or Redis) instead of the instance's memory. | Today they reset whenever a container sleeps, and with item 21 each instance would count separately. Needs care: a database write on every limited request must not keep the free database awake. | M |
+| 26 | **Keep secret values out of Terraform's state** where the providers allow it (write-only arguments for Secret Manager values, ephemeral generated passwords), and lock the state bucket down (versioning, access limited to one identity). | The state file holds every secret in plain text; today its only protection is being in a private bucket. Partial at best: values passed as plain environment variables stay in the state. To verify: provider support for write-only secret values. | M |
+
+### Accepted, not planned
+
+| What | Why it's accepted | What it would take |
+|---|---|---|
+| **GhostChat's database accepts connections from any address.** | Cloud Run has no fixed outbound address on the free tier, and a free Atlas cluster has no private networking. The protections in place: TLS, a long random password, a user limited to one database, and message contents encrypted in the browser before they're stored. | A fixed outbound address for Cloud Run (a VPC with Cloud NAT and a reserved IP, a few dollars a month) and an Atlas access list naming only it. |
+
 ## Resilience (costed in [resilience-plan.md](resilience-plan.md); all $0 a month to run)
 
 | # | What | Why | Size |
