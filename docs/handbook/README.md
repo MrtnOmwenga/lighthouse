@@ -19,7 +19,7 @@ an assistant that answers questions about the portfolio by looking things up her
 | 7 | The public site | *to be written* |
 | 8 | Testing and CI | *to be written* |
 
-What the review found that still needs building is in the [build list](backlog.md).
+What the review found that still needs building is in the [build list](backlog.md); the costed options for backups, redundancy and self-managed databases are in the [resilience plan](resilience-plan.md).
 
 ## Conventions
 

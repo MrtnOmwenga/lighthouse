@@ -26,7 +26,22 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 17 | **Send each origin only its own edge secret** (one secret per service, or send it to Lighthouse only). | The Worker currently adds Lighthouse's secret to requests for the demos as well. | S |
 | 18 | **Longer-lived, smarter edge caching for static files** (fingerprinted file names with a long cache time). | The cache is per Cloudflare location and lasts an hour, so a low-traffic site still fetches static files from the origin often. | M |
 
-| 19 | **A redundancy exercise** (optional, to learn it by doing): a second region for one service, with the Worker falling back to it when the first doesn't answer, and traffic-split releases (5% to a new revision, then the rest). | Martin wants to understand redundancy in practice; none exists today (one instance, one region). Would leave the free tier while it runs. | L |
+
+## Resilience (costed in [resilience-plan.md](resilience-plan.md); all $0 a month to run)
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 12 | **Nightly backups** of both Postgres databases and GhostChat's MongoDB to a Cloud Storage bucket (free region, versioned, 30-day expiry), from a Cloud Run job on a second scheduler job. | Neon's free plan keeps six hours of history; Atlas M0 has no backups. | M |
+| 19 | **A weekly automated restore test:** restore the latest backup into a scratch database, run checks, record how long it took. State the objectives (lose at most 24 hours; recover in N minutes). | A backup that has never been restored isn't known to work. | M |
+| 20 | **Canary releases:** new revisions take 5% of traffic, then the rest; with item 6 (automatic rollback). | Safe releases, built into Cloud Run. | M |
+| 21 | **Two instances with shared state:** Redacted on two instances (PostgreSQL LISTEN/NOTIFY), with a test proving an edit through one instance reaches a reader on the other; GhostChat with Redis (Upstash free tier). | Shows running more than one copy correctly; costs nothing while idle. | L |
+| 22 | **The edge serves a saved copy when the origin fails** (with item 8, edge caching of pages). | Graceful degradation. | M |
+| 23 | **A self-managed PostgreSQL pair as the recovery side** (separate project, on the Oracle account's free VMs): primary and streaming replica, point-in-time recovery with pgBackRest or WAL-G, fed nightly from the live dumps, with written failover and restore drills. | Shows operating a database without putting the live site on a small free VM. | L |
+| 24 | *(Optional)* **A second region with failover in the Worker.** | Multi-region for the services only; the database stays in one region. | L |
+
+Decided against: an always-warm instance (about $5–8 a month per service, demonstrates nothing), a
+managed highly-available database, and a continuous standby (a connected replica keeps Neon awake
+and breaks the free compute budget).
 
 ## Carried over (noted before the review started)
 
@@ -34,7 +49,6 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 |---|---|---|---|
 | 10 | **Something outside Lighthouse that notices when Lighthouse is down.** | It watches the other apps and itself, but can't report its own outage. To be designed in Part 2. | M |
 | 11 | **Caption the demos' response times** ("includes waking the demo"), or measure warm latency separately. | Each 15-minute check wakes a sleeping demo, so the table shows about 3.5 s and reads as a slow app. | S |
-| 12 | **Nightly database backup** to Cloud Storage, from a Cloud Run job on a second scheduler job. | Neon's free plan keeps six hours of history. | M |
 | 13 | **Switch on email alerts** (needs SMTP credentials and addresses). | Built, tested, not configured in the live deployment. | S |
 | 14 | **Move the Terraform state** from the Oracle bucket to Google Cloud Storage. | Everything else is on Google; the Oracle account is otherwise unused. | S |
 | 15 | **Infisical for Lighthouse's secrets** (replacing the local keyring helpers for this project). | Planned for the end of the review. | M |
