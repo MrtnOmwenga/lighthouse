@@ -120,9 +120,12 @@ func DeleteMonitor(ctx context.Context, tx pgx.Tx, id string) error {
 
 type Due struct{ MonitorID, TenantID string }
 
-// DueMonitors lists monitors due for a check, across tenants.
-func DueMonitors(ctx context.Context, pool *pgxpool.Pool, limit int) ([]Due, error) {
-	rows, err := pool.Query(ctx, `SELECT id, tenant_id FROM lighthouse_due_monitors($1)`, limit)
+// DueMonitors lists monitors due for a check, across tenants. With slack, a monitor due within
+// that long (and within a tenth of its own interval) counts as due already: a schedule driven
+// from outside arrives at fixed times, and would otherwise find a monitor a few seconds short of
+// due and leave it for a whole extra period.
+func DueMonitors(ctx context.Context, pool *pgxpool.Pool, limit int, slack time.Duration) ([]Due, error) {
+	rows, err := pool.Query(ctx, `SELECT id, tenant_id FROM lighthouse_due_monitors($1, make_interval(secs => $2))`, limit, slack.Seconds())
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +135,24 @@ func DueMonitors(ctx context.Context, pool *pgxpool.Pool, limit int) ([]Due, err
 	})
 }
 
+// DueSimulated lists the tenant's simulated monitors that are due now.
+func DueSimulated(ctx context.Context, tx pgx.Tx) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT id FROM monitors WHERE kind = 'simulated' AND NOT paused AND next_check_at <= now()
+		ORDER BY next_check_at`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
 // ClaimMonitor moves a due monitor's next check into the future and returns it. Only one caller
-// wins: a monitor already claimed (by another worker or instance) returns ErrNotFound.
-func ClaimMonitor(ctx context.Context, tx pgx.Tx, id string) (Monitor, error) {
+// wins: a monitor already claimed (by another worker or instance) returns ErrNotFound. slack is
+// as in DueMonitors.
+func ClaimMonitor(ctx context.Context, tx pgx.Tx, id string, slack time.Duration) (Monitor, error) {
 	return scanMonitor(tx.QueryRow(ctx, `UPDATE monitors SET next_check_at = now() + make_interval(secs => interval_seconds)
-		WHERE id = $1 AND NOT paused AND next_check_at <= now() RETURNING `+monitorColumns, id))
+		WHERE id = $1 AND NOT paused
+		  AND next_check_at <= now() + least(make_interval(secs => $2), make_interval(secs => interval_seconds / 10.0))
+		RETURNING `+monitorColumns, id, slack.Seconds()))
 }
 
 // LockMonitor reads a monitor for update, so state changes from concurrent checks serialize.

@@ -148,7 +148,9 @@ The image is a static binary on a distroless base, running as a non-root user wi
 filesystem. `lighthouse migrate` applies migrations as the database owner and creates the app's
 least-privileged role; `lighthouse serve` runs the server, scheduler and housekeeping (with
 `SCHEDULE=external`, calls to `POST /internal/tick` drive the checks instead, for platforms that
-freeze idle instances).
+freeze idle instances; each call checks everything due, a monitor due within `TICK_SLACK_SECONDS`
+counts as due so a call that arrives a little early doesn't skip it, and a sandbox's simulated
+monitors are checked as its console reads data).
 
 ## Design
 

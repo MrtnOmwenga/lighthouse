@@ -325,3 +325,68 @@ func TestNotifiesOnOpenAndResolveOnly(t *testing.T) {
 		t.Fatalf("resolved: %+v", changes[1])
 	}
 }
+
+// One round checks everything that is due, however many batches that takes, and each monitor once.
+func TestRunOnceChecksEverythingDue(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.sched.Workers = 1 // a batch of four
+	for i := range 11 {
+		in := input("simulated")
+		in.Slug = uuid.NewString()[:8] + string(rune('a'+i))
+		in.IntervalSeconds = 5
+		f.create(in)
+	}
+	if n := f.sched.RunOnce(context.Background()); n != 11 {
+		t.Fatalf("RunOnce checked %d monitors, want 11", n)
+	}
+	var checked, most int
+	if err := f.db.Owner.QueryRow(context.Background(),
+		`SELECT count(*), coalesce(max(n), 0) FROM (SELECT count(*) n FROM checks GROUP BY monitor_id) c`).Scan(&checked, &most); err != nil {
+		t.Fatal(err)
+	}
+	if checked != 11 || most != 1 {
+		t.Fatalf("%d monitors checked, at most %d times each: want 11, once each", checked, most)
+	}
+}
+
+// A console read drives its own tenant's simulated checks, and nothing else.
+func TestRunTenant(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	mine := f.create(input("simulated"))
+	real := input("http")
+	u := "https://example.com/"
+	real.URL = &u
+	live := f.create(real)
+
+	other := uuid.NewString()
+	if err := store.CreateSandbox(context.Background(), f.db.App, other, func(pgx.Tx) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	var theirs store.Monitor
+	if err := store.WithTenant(context.Background(), f.db.App, other, func(tx pgx.Tx) (err error) {
+		theirs, err = store.CreateMonitor(context.Background(), tx, other, input("simulated"))
+		return
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := f.sched.RunTenant(context.Background(), f.tenant); n != 1 {
+		t.Fatalf("RunTenant started %d checks, want 1", n)
+	}
+	if f.monitor(mine.ID).LastCheckedAt == nil {
+		t.Fatal("the tenant's simulated monitor wasn't checked")
+	}
+	if f.monitor(live.ID).LastCheckedAt != nil {
+		t.Fatal("an HTTP monitor was probed from a console read")
+	}
+	var checks int
+	if err := f.db.Owner.QueryRow(context.Background(), "SELECT count(*) FROM checks WHERE monitor_id = $1", theirs.ID).Scan(&checks); err != nil || checks != 0 {
+		t.Fatalf("another tenant's monitor was checked: %d %v", checks, err)
+	}
+	// Not due again until its interval has passed.
+	if n := f.sched.RunTenant(context.Background(), f.tenant); n != 0 {
+		t.Fatalf("a second read straight away started %d checks", n)
+	}
+}
