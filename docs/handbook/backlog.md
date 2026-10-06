@@ -37,6 +37,8 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 33 | **Confirm a failure quickly instead of waiting a full interval** (Martin's idea, 2026-10-06): after a failed check, re-check a few times, seconds apart, within the same round. | Three failures currently means three intervals: 45 to 90 minutes. Quick confirmation checks would open an incident within one tick without checking more often when all is well. | M |
 | 34 | **Metrics, Grafana and an outside alarm:** a Prometheus-format `/metrics` view of Lighthouse (checks, their durations, incidents open, request latency, tick duration), pushed to Grafana Cloud's free tier at the end of each tick; dashboards and alert rules kept in the repository (Terraform); an alert when no tick has reported for 20 minutes, which is also item 10's "who watches Lighthouse". A second dashboard can read the checks table directly through a read-only database role. | Lighthouse sees the apps only from outside, and nothing outside sees Lighthouse. Also turns the Prometheus/Grafana line on the CV into public evidence. Free tier checked 2026-10-06: 10,000 series, 50 GB of logs, 14 days. | L |
 
+| 35 | **Check a monitor the moment it's saved, and offer a "Test" button** (Martin's idea, 2026-10-06): after creating or editing a monitor, run its first check at once and show the result beside it; let the settings be tried before saving. The test must go through the same address guard and rate limits as a scheduled check. | A new monitor is created as due but nothing runs it until the next round: up to 15 minutes on the live site, so a mistyped address or wrong expected status is only discovered much later. Builds on item 27. | M |
+
 ## From Part 1b: Cloud Run and the edge
 
 | # | What | Why | Size |

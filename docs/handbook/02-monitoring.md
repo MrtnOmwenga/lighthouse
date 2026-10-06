@@ -224,6 +224,10 @@ example at the end of each tick.
   `unknown`, never checked, 45 seconds after one was set to `down`. An incident would take three
   ticks. Fix: run a tenant's due checks when its console asks for data (the console polls every
   five seconds while open), so an active visitor drives their own schedule.
+- **A new monitor isn't checked when it's created.** It is saved as due, but nothing runs it until
+  the next round: within a second in loop mode, up to 15 minutes on the live site. A mistyped
+  address is only discovered later. Fix: run the first check on save and show the result, and
+  offer a test before saving.
 - **Every other tick is missed.** The owner's monitors have a 900-second interval and the tick
   comes every 900 seconds. A claim sets the next check to "now + 900 s", a few seconds after the
   tick, so the following tick arrives a few seconds too early and skips it. The live monitors show
