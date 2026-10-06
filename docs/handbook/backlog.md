@@ -4,6 +4,14 @@ Things the part-by-part review found that should be built or fixed. Nothing here
 the review; it is all done together at the end. Each item says what, why, and where it came from.
 Sizes: S (under an hour), M (a few hours), L (a day or more).
 
+## Do first: broken on the live site
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 27 | **Make the sandbox work under the external schedule:** when a tenant's console asks for data, run that tenant's due checks first (the console polls every five seconds while open), so an active visitor drives their own schedule. | Sandbox monitors are meant to be checked every 10 seconds; on Cloud Run checks only run on the 15-minute tick. Verified live on 2026-10-06: nothing was checked 45 seconds after a pretend site was set to down. Lighthouse's own demo doesn't demonstrate anything. | M |
+| 28 | **Stop every other tick being skipped:** treat a monitor as due if it will be within a few seconds, or set the owner's monitor interval below the tick period. | Interval and tick are both 900 s; each claim lands a few seconds after the tick, so the next tick arrives too early. The live monitors log about 58 checks a day instead of 96. | S |
+| 29 | **Correct the site's detection time** ("about 45 minutes") once 28 is fixed, or state the real figure. | With every other tick skipped it is 45 to 90 minutes. | S |
+
 ## From Part 1a: the pipeline
 
 | # | What | Why | Size |
@@ -17,6 +25,14 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 7 | **Write down the migration rule** (a migration must work with the previous release's code: add first, remove in a later release), and consider a CI check. | Migrations run before the new code takes traffic. | S |
 | 8 | **Cache the public pages at the edge for about a minute**, serving the cached copy if the origin fails. | Most visitors would never wake the app, and the site would survive a brief origin failure. Needs care: pages that depend on the signed-in owner must not be cached. | M |
 | 9 | **Decide whether to keep building the arm64 image.** | Cloud Run only runs amd64; arm64 serves the Kubernetes path and Arm laptops. Keep (cheap, cross-compiled) or drop (simpler). A decision, not work. | S |
+
+## From Part 2: monitoring
+
+| # | What | Why | Size |
+|---|---|---|---|
+| 30 | **Lift the 32-monitors-per-round cap in external mode** (keep dispatching until nothing is due, within the tick's time limit). | In loop mode the next second picks up the rest; in external mode they wait 15 minutes. | S |
+| 31 | *(Optional)* **Confirm an outage from a second place** before opening an incident (a small probe worker in another region or at the edge). | Every probe leaves from one region, so a network problem on the way looks like the site being down. | L |
+| 32 | **Measure warm response time for sleeping demos** (probe twice and record the second, or mark the first as a wake-up). Replaces item 11's caption. | The recorded 3.4 s is the cold start, not the app. | M |
 
 ## From Part 1b: Cloud Run and the edge
 
@@ -56,7 +72,7 @@ and breaks the free compute budget).
 
 | # | What | Why | Size |
 |---|---|---|---|
-| 10 | **Something outside Lighthouse that notices when Lighthouse is down.** | It watches the other apps and itself, but can't report its own outage. To be designed in Part 2. | M |
+| 10 | **Something outside Lighthouse that notices when Lighthouse is down:** on each successful tick, ping a heartbeat service that raises the alarm when the pings stop (a "dead man's switch"); or a Cloud Monitoring uptime check with an email alert. | It watches the other apps and itself, but can't report its own outage. | S |
 | 11 | **Caption the demos' response times** ("includes waking the demo"), or measure warm latency separately. | Each 15-minute check wakes a sleeping demo, so the table shows about 3.5 s and reads as a slow app. | S |
 | 13 | **Switch on email alerts** (needs SMTP credentials and addresses). | Built, tested, not configured in the live deployment. | S |
 | 14 | **Move the Terraform state** from the Oracle bucket to Google Cloud Storage. | Everything else is on Google; the Oracle account is otherwise unused. | S |
