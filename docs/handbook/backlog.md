@@ -26,6 +26,8 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 | 17 | **Send each origin only its own edge secret** (one secret per service, or send it to Lighthouse only). | The Worker currently adds Lighthouse's secret to requests for the demos as well. | S |
 | 18 | **Longer-lived, smarter edge caching for static files** (fingerprinted file names with a long cache time). | The cache is per Cloudflare location and lasts an hour, so a low-traffic site still fetches static files from the origin often. | M |
 
+| 19 | **A redundancy exercise** (optional, to learn it by doing): a second region for one service, with the Worker falling back to it when the first doesn't answer, and traffic-split releases (5% to a new revision, then the rest). | Martin wants to understand redundancy in practice; none exists today (one instance, one region). Would leave the free tier while it runs. | L |
+
 ## Carried over (noted before the review started)
 
 | # | What | Why | Size |
