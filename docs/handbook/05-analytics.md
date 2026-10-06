@@ -139,6 +139,15 @@ regime requires.
 
 ## Known gaps
 
+- **The status page's auto-refresh is counted as new views.** The page reloads itself every
+  minute, and each reload records a view. In the first week live, one browser left open on it
+  produced 264 views in a day; 342 of the 427 recorded views were `/status`, from four visitors.
+- **The owner's own visits are counted unless signed in.** Signed out, on a phone, or on a network
+  whose address changes, the owner looks like a stream of new visitors. Most of the first week's
+  traffic clusters in the owner's working hours.
+- **A view is counted the instant a page loads,** so a real person who glances and leaves, and a
+  scanner driving a real browser, look the same: one view, zero seconds. 51 of the first week's 61
+  visitor-days were exactly that.
 - **Visitors are undercounted.** Everyone sharing an IP address and browser version (an office, a
   mobile carrier's shared addresses) counts as one person. A person on two networks counts as two.
 - **Privacy-minded browsers are invisible.** Brave sends Global Privacy Control by default, and

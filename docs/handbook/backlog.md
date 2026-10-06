@@ -71,6 +71,11 @@ changes in the same commit to say exactly what is collected.
 | 46 | **Let visitors identify themselves:** a clear "hiring? get in touch" option, or the CV in exchange for an email address. | The best data is given voluntarily, and is unambiguously lawful. | M |
 | 47 | *(Last, with care)* **Company-level identification from the network address,** disclosed on the privacy page, with a written justification (legitimate interest). | Says which organisation visited. Addresses are personal data under EU and Kenyan law; limited value for people working from home. | M |
 
+| 48 | **Don't count the status page's auto-refresh as new views** (count a page once per visit, or stop the reload from sending a view). | Found in the live data on 2026-10-06: 342 of 427 recorded views were `/status`, from four visitors; one open tab made 264 in a day. | S |
+| 49 | **Let the owner exclude his own browsers,** signed in or not (a "don't count this browser" switch in the console that the counting script respects). | His visits are only excluded while signed in; from a phone or a changing address he looks like many new visitors, which swamps a small site's numbers. | S |
+| 50 | **Report engaged visitors separately:** those who stayed at least a few seconds or interacted, beside the raw count. | A view is counted on load, so a glance, a bounce and a scanner in a real browser are indistinguishable: 51 of 61 visitor-days in the first week were one page, zero seconds. | S |
+| 51 | **Review the front page for click-through once the data is clean** (after 43, 48, 49, 50): what share of real visitors go on to a project or a demo, and what would raise it. | Few visitors go past the front page, but today's numbers can't say whether that's the page or the noise. | M |
+
 Decided against: device fingerprinting and third-party trackers (both need consent banners in the
 EU, and add little beyond 43 to 45).
 
