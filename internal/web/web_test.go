@@ -448,8 +448,7 @@ func TestIncidentPagination(t *testing.T) {
 // console reads, so a visitor can break a site and watch the incident open.
 func TestConsoleReadsDriveTheSandbox(t *testing.T) {
 	t.Parallel()
-	var e *env
-	e = startWith(t, nil, func(s *web.Server) {
+	e := startWith(t, nil, func(s *web.Server) {
 		sched := &monitor.Scheduler{Pool: s.Pool, Prober: monitor.NewProber(), Workers: 4, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 		s.Drive = sched.RunTenant
 	})
