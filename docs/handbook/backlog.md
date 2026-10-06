@@ -7,18 +7,24 @@ Sizes: S (under an hour), M (a few hours), L (a day or more).
 ## Build phases
 
 The order the list is built in. Each phase is one pull request: built, tested, then the next.
+The pull requests are stacked (each builds on the one before), so they merge in order. The pages
+of this handbook describe the code on `main`; their "known gaps" are updated as each phase merges.
 
-| Phase | Theme | Items |
-|---|---|---|
-| 1 | **Fix what is broken on the live site** | 27, 28, 29, 30 |
-| 2 | **Clean numbers and first impressions:** analytics that count real readers, link previews, a status page that survives the database | 48, 49, 50, 60, 61, 62 |
-| 3 | **A finished console** | 52, 53, 56, 58, 59, 35, 41, 54, 57 |
-| 4 | **A safer pipeline** | 1, 2, 3, 4, 5, 6, 7, 9, 37 |
-| 5 | **Security and sign-in** | 38, 39, 40, 42, 17, 16, 25, 26 |
-| 6 | **Better monitoring** | 33, 32 (replaces 11), 36, 10, 34, 13 |
-| 7 | **Analytics for the job search** | 43, 44, 45, 46, 51 |
-| 8 | **Resilience and operations** | 12, 19, 20, 8, 22, 18, 14, 15, 21 |
-| Later | Separate projects or optional | 23, 24, 31, 47, 55 |
+Not built in phase 3: the count of server errors that can raise an alarm (part of 59) moves to
+phase 6 with the metrics, and uptime is still computed from raw rows on each poll (part of 54)
+until the daily summaries of item 36.
+
+| Phase | Theme | Items | State |
+|---|---|---|---|
+| 1 | **Fix what is broken on the live site** | 27, 28, 29, 30 | Built: pull request #19 |
+| 2 | **Clean numbers and first impressions:** analytics that count real readers, link previews, a status page that survives the database | 48, 49, 50, 60, 61, 62 | Built: pull request #21 |
+| 3 | **A finished console** | 52, 53, 56, 58, 59, 35, 41, 54, 57 | Built: pull request #22 |
+| 4 | **A safer pipeline** | 1, 2, 3, 4, 5, 6, 7, 9, 37 | Next |
+| 5 | **Security and sign-in** | 38, 39, 40, 42, 17, 16, 25, 26 | |
+| 6 | **Better monitoring** | 33, 32 (replaces 11), 36, 10, 34, 13 | |
+| 7 | **Analytics for the job search** | 43, 44, 45, 46, 51 | |
+| 8 | **Resilience and operations** | 12, 19, 20, 8, 22, 18, 14, 15, 21 | |
+| Later | Separate projects or optional | 23, 24, 31, 47, 55 | |
 
 ## Do first: broken on the live site
 
