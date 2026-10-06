@@ -77,7 +77,9 @@ the monitoring in a sandbox, without an account.
   next day or recover an IP. The API's database role can't read the salts; one narrow function
   hands out today's.
 - **Signals are respected before anything is sent:** Global Privacy Control and Do Not Track stop
-  the script, and the server checks again. Bots and the signed-in owner aren't counted.
+  the script, and the server checks again. Bots and the signed-in owner aren't counted, nor are browsers the
+  owner has marked as his own (a cookie in his browser only). The report separates engaged readers
+  (five seconds of reading, or a demo opened) from everyone who merely loaded a page.
 - **Engaged time is measured by the server.** The page sends a heartbeat every 15 seconds only while
   it is visible and in use; each heartbeat can add at most 20 seconds, measured from the previous
   one on the server, so a client can't claim time that didn't pass.

@@ -98,8 +98,9 @@ export interface StatusPage {
 
 export interface Report {
   since: string;
-  pages: { path: string; project: string | null; views: number; visitors: number; medianEngagedSeconds: number }[];
-  projects: { project: string; views: number; visitors: number; medianEngagedSeconds: number; launches: number; opens: number }[];
+  summary: { views: number; visitors: number; engagedVisitors: number };
+  pages: { path: string; project: string | null; views: number; visitors: number; engagedVisitors: number; medianEngagedSeconds: number }[];
+  projects: { project: string; views: number; visitors: number; engagedVisitors: number; medianEngagedSeconds: number; launches: number; opens: number }[];
   refs: { ref: string; visitors: number; firstSeen: string; lastSeen: string; views: number; engagedSeconds: number; pages: string[]; demosOpened: number }[];
   referrers: { label: string; visitors: number }[];
   devices: { label: string; visitors: number }[];
@@ -157,4 +158,6 @@ export const api = {
 
   myStatus: () => call<StatusPage>('GET', '/api/my-status'),
   report: (days = 30) => call<Report>('GET', `/api/analytics?days=${days}`),
+  exclusion: () => call<{ excluded: boolean }>('GET', '/api/analytics/exclusion'),
+  setExclusion: (excluded: boolean) => call<{ excluded: boolean }>('PUT', '/api/analytics/exclusion', { excluded }),
 };

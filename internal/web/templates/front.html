@@ -1,5 +1,6 @@
 {{template "head" (printf "The Lighthouse · %s" .Owner)}}
 <meta name="description" content="The engineering portfolio of {{.Owner}}: live projects, how they were built, and the system that monitors them.">
+{{template "social" (social . "/" (printf "The Lighthouse · %s" .Owner) (printf "The engineering portfolio of %s: live projects, how they were built, and the system that monitors them." .Owner))}}
 </head>
 <body>
 {{template "masthead" .}}

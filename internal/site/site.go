@@ -63,6 +63,7 @@ type Profile struct {
 	Strip           string    `yaml:"strip"` // the line across the top of every page
 	Portrait        string    `yaml:"portrait"`
 	PortraitCaption string    `yaml:"portrait_caption"`
+	Preview         string    `yaml:"preview"` // the image link previews show, in media/ (1200×630)
 	Links           Links     `yaml:"links"`
 	Lead            Article   `yaml:"lead"`   // the front page's story about the owner
 	Glance          []Fact    `yaml:"glance"` // "At a glance"
@@ -288,6 +289,7 @@ func (s *Site) validate() []string {
 
 	p := s.Profile
 	media("profile.portrait", p.Portrait)
+	media("profile.preview", p.Preview)
 	if p.Links.Email != "" && !strings.Contains(p.Links.Email, "@") {
 		add("profile.links.email: an email address")
 	}

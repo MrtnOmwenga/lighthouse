@@ -10,10 +10,17 @@ import (
 	"github.com/MrtnOmwenga/lighthouse/internal/auth"
 )
 
+// excludedCookie marks a browser the owner has asked not to count: his own, signed in or not.
+const excludedCookie = "lh_nocount"
+
 // counted reports whether this request's visit may be counted: not when the browser asks not to
-// be tracked (Global Privacy Control or Do Not Track), and not for the signed-in owner.
+// be tracked (Global Privacy Control or Do Not Track), not for the signed-in owner, and not from a
+// browser the owner has marked as his.
 func counted(r *http.Request) bool {
 	if r.Header.Get("Sec-GPC") == "1" || r.Header.Get("DNT") == "1" {
+		return false
+	}
+	if c, err := r.Cookie(excludedCookie); err == nil && c.Value == "1" {
 		return false
 	}
 	if id, ok := auth.FromContext(r.Context()); ok && id.Owner() {
@@ -119,6 +126,37 @@ func (s *Server) analyticsReport(w http.ResponseWriter, r *http.Request, id auth
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	return writeJSON(w, http.StatusOK, rep)
+}
+
+// exclusion reports whether this browser is marked as the owner's, so its visits aren't counted.
+func (s *Server) exclusion(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	if !id.Owner() {
+		return errForbidden
+	}
+	c, err := r.Cookie(excludedCookie)
+	w.Header().Set("Cache-Control", "no-store")
+	return writeJSON(w, http.StatusOK, map[string]bool{"excluded": err == nil && c.Value == "1"})
+}
+
+// setExclusion marks or unmarks this browser. The mark outlives the session (a year), so the
+// owner's visits stay uncounted after he signs out; only he can set it.
+func (s *Server) setExclusion(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	if !id.Owner() {
+		return errForbidden
+	}
+	var in struct {
+		Excluded bool `json:"excluded"`
+	}
+	if err := readJSON(w, r, &in); err != nil {
+		return err
+	}
+	c := &http.Cookie{Name: excludedCookie, Value: "1", Path: "/", MaxAge: 365 * 24 * 3600,
+		HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode}
+	if !in.Excluded {
+		c.Value, c.MaxAge = "", -1
+	}
+	http.SetCookie(w, c)
+	return writeJSON(w, http.StatusOK, map[string]bool{"excluded": in.Excluded})
 }
 
 func (s *Server) privacyPage(w http.ResponseWriter, _ *http.Request) {

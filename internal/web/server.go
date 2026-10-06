@@ -57,6 +57,7 @@ type Server struct {
 	Drive func(ctx context.Context, tenantID string) int
 
 	pages     *template.Template
+	status    statusCache
 	sandboxes *limiter // new sandboxes per client
 	writes    *limiter // API writes per client
 }
@@ -88,6 +89,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /about", s.aboutPage)
 	mux.HandleFunc("GET /privacy", s.privacyPage)
 	mux.HandleFunc("GET /media/{name}", s.media)
+	mux.HandleFunc("GET /robots.txt", s.robots)
+	mux.HandleFunc("GET /sitemap.xml", s.sitemap)
 	mux.HandleFunc("GET /go/{slug}", s.launchPage)
 	mux.HandleFunc("GET /api/projects", s.listProjects)
 	mux.HandleFunc("GET /api/projects/{slug}/ready", s.projectReady)
@@ -129,6 +132,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/a/ping", s.analyticsPing)
 	mux.HandleFunc("POST /api/a/event", s.analyticsEvent)
 	mux.HandleFunc("GET /api/analytics", s.signedIn(s.analyticsReport))
+	mux.HandleFunc("GET /api/analytics/exclusion", s.signedIn(s.exclusion))
+	mux.HandleFunc("PUT /api/analytics/exclusion", s.signedIn(s.setExclusion))
 
 	// The console API: every query runs inside the caller's tenant.
 	mux.HandleFunc("GET /api/my-status", s.signedIn(s.myStatus))

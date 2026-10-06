@@ -82,7 +82,8 @@ func startWith(t *testing.T, tweak func(*config.Config), adjust func(*web.Server
 	cfg, err := config.Load(func(k string) string {
 		return map[string]string{
 			"DATABASE_URL": db.AppURL, "PUBLIC_URL": srv.URL, "LIGHTHOUSE_ENV": "test", "OWNER_NAME": "Martin",
-			"GITHUB_CLIENT_ID": "client", "GITHUB_CLIENT_SECRET": "shh", "OWNER_GITHUB_ID": fmt.Sprint(ownerGitHubID),
+			"STATUS_CACHE_SECONDS": "0", // tests change data and read it straight back
+			"GITHUB_CLIENT_ID":     "client", "GITHUB_CLIENT_SECRET": "shh", "OWNER_GITHUB_ID": fmt.Sprint(ownerGitHubID),
 			"GITHUB_OAUTH_BASE": e.github.URL, "GITHUB_API_BASE": e.github.URL,
 		}[k]
 	})
