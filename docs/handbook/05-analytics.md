@@ -141,7 +141,7 @@ regime requires.
 
 - **The status page's auto-refresh is counted as new views.** The page reloads itself every
   minute, and each reload records a view. In the first week live, one browser left open on it
-  produced 264 views in a day; 342 of the 427 recorded views were `/status`, from four visitors.
+  produced 264 views in a day; 342 of the 424 recorded views were `/status`, from four visitors.
 - **The owner's own visits are counted unless signed in.** Signed out, on a phone, or on a network
   whose address changes, the owner looks like a stream of new visitors. Most of the first week's
   traffic clusters in the owner's working hours.
