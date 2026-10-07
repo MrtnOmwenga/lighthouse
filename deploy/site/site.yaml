@@ -17,8 +17,8 @@ profile:
     kicker: About the engineer
     headline: "Martin Omwenga owns backend systems end to end: from the client's requirements to the pipeline, the cluster and the incident"
     standfirst: >-
-      Four years building and running production systems for European clients, the last two as
-      tech lead of a small team. He writes the API, the tests, the Terraform and the deploy
+      Four years building and running production systems, the last two as tech lead of a small
+      team serving European clients. He writes the API, the tests, the Terraform and the deploy
       pipeline, and stays with the system once it is live. This site is the proof: he wrote the
       system that publishes it and monitors every demo on it.
 
@@ -63,7 +63,7 @@ profile:
 
   about:
     kicker: Profile
-    headline: "Four years of production systems for European clients, and the team and platform behind them"
+    headline: "Four years of production systems, and the team and platform behind them"
     standfirst: >-
       Martin Omwenga is a fullstack and platform engineer in Nairobi. He builds production systems,
       and the Kubernetes, Terraform and CI/CD that ship them, and leads a small team from client
