@@ -34,7 +34,7 @@ func (s *Server) tick(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.TickVerifier.Verify(r.Context(), token); err != nil {
 		if errors.Is(err, oidc.ErrInvalid) {
-			s.Log.Warn("tick rejected", "err", err)
+			s.Auth.Security("tick_rejected", "err", err.Error())
 			http.NotFound(w, r)
 			return
 		}

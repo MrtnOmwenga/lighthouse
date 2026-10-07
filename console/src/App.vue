@@ -40,6 +40,7 @@ async function leave() {
         <RouterLink to="/incidents" :aria-current="$route.path.startsWith('/incidents') ? 'page' : undefined">Incidents</RouterLink>
         <RouterLink to="/status" :aria-current="$route.path === '/status' ? 'page' : undefined">Status page</RouterLink>
         <RouterLink v-if="owner" to="/readers" :aria-current="$route.path === '/readers' ? 'page' : undefined">Readers</RouterLink>
+        <RouterLink v-if="owner" to="/security" :aria-current="$route.path === '/security' ? 'page' : undefined">Security</RouterLink>
         <button type="button" class="button" @click="leave">{{ owner ? 'Sign out' : 'Leave sandbox' }}</button>
       </nav>
     </div>

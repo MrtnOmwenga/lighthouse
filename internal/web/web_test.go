@@ -330,10 +330,21 @@ func TestSandbox(t *testing.T) {
 func TestSandboxCreationIsRateLimited(t *testing.T) {
 	t.Parallel()
 	e := start(t, nil)
-	for range 3 {
+	for range 6 {
 		e.browser().expect(201, "POST", "/api/sandbox", nil)
 	}
 	e.browser().expect(429, "POST", "/api/sandbox", nil)
+
+	// The count is in the database (so it survives a restart and is shared between instances),
+	// under a keyed hash, never the visitor's address.
+	var key string
+	var count int
+	if err := e.db.Owner.QueryRow(context.Background(), "SELECT key, count FROM rate_limits").Scan(&key, &count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 7 || strings.Contains(key, "127.0.0.1") || !strings.HasPrefix(key, "sandbox:") {
+		t.Fatalf("rate limit row: %q %d", key, count)
+	}
 }
 
 func TestCrossSiteWritesAreRefused(t *testing.T) {
@@ -363,7 +374,7 @@ func TestAPIRequiresASession(t *testing.T) {
 	}
 	// A forged cookie is just no session.
 	u, _ := url.Parse(e.url)
-	anon.client.Jar.SetCookies(u, []*http.Cookie{{Name: auth.SessionCookie, Value: "forged"}})
+	anon.client.Jar.SetCookies(u, []*http.Cookie{{Name: "lh_session", Value: "forged"}})
 	anon.expect(401, "GET", "/api/monitors", nil)
 }
 

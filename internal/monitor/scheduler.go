@@ -362,6 +362,9 @@ func PruneOnce(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger, keepCh
 	} else if n.Checks+n.Sandboxes+n.Sessions > 0 {
 		log.Info("pruned", "checks", n.Checks, "sandboxes", n.Sandboxes, "sessions", n.Sessions)
 	}
+	if _, err := store.PruneSecurity(ctx, pool, keepChecks); err != nil && ctx.Err() == nil {
+		log.Error("pruning sign-in records", "err", err)
+	}
 	if views, err := store.PruneAnalytics(ctx, pool, keepChecks); err != nil {
 		if ctx.Err() == nil {
 			log.Error("pruning visits", "err", err)

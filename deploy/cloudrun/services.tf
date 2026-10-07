@@ -118,6 +118,7 @@ resource "google_cloud_run_v2_service" "app" {
   lifecycle {
     ignore_changes = [
       template[0].containers[0].image, # the release workflow deploys images
+      template[0].revision,            # and starts each new revision by name, without traffic
       client,
       client_version,
     ]

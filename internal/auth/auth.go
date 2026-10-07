@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,15 +30,42 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/MrtnOmwenga/lighthouse/internal/analytics"
 	"github.com/MrtnOmwenga/lighthouse/internal/config"
 	"github.com/MrtnOmwenga/lighthouse/internal/store"
 )
 
+const OwnerTTL = 12 * time.Hour
+
+// Cookie names. Over HTTPS they carry the __Host- prefix: a browser then accepts the cookie only
+// from this exact host, over HTTPS, for the whole site. Without it, a page on a sibling address
+// (the demos share the parent domain) could set a cookie of the same name for the whole domain
+// and so plant a session in a visitor's browser. Browsers refuse the prefix over plain HTTP, so
+// local development uses the bare names.
 const (
-	SessionCookie = "lh_session"
+	sessionCookie = "lh_session"
 	stateCookie   = "lh_oauth_state"
-	OwnerTTL      = 12 * time.Hour
+	hostPrefix    = "__Host-"
 )
+
+func (s *Service) cookieName(name string) string {
+	if s.Config.SecureCookies() {
+		return hostPrefix + name
+	}
+	return name
+}
+
+// SessionCookieName is the session cookie's name in this deployment.
+func (s *Service) SessionCookieName() string { return s.cookieName(sessionCookie) }
+
+// CurrentTokenHash is the stored hash of the request's session token, or "" without one.
+func (s *Service) CurrentTokenHash(r *http.Request) string {
+	c, err := r.Cookie(s.SessionCookieName())
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	return hashToken(c.Value)
+}
 
 // Identity is who is making a request.
 type Identity struct {
@@ -53,6 +81,33 @@ type Service struct {
 	Pool   *pgxpool.Pool
 	Config config.Config
 	Client *http.Client // for GitHub; a short timeout
+	// Log, if set, hears each security event as a structured line (msg "security", with an
+	// "event"), which is what log-based alerts match on.
+	Log *slog.Logger
+}
+
+// Security logs a security event: a sign-in, a refusal, a rejected caller.
+func (s *Service) Security(event string, attrs ...any) {
+	if s != nil && s.Log != nil {
+		s.Log.Warn("security", append([]any{"event", event}, attrs...)...)
+	}
+}
+
+// record adds to the owner's record of sign-ins and logs the event. A failure to record is
+// logged and doesn't undo what happened.
+func (s *Service) record(ctx context.Context, e store.AuthEvent) {
+	attrs := []any{"login", e.Login}
+	if e.GitHubID != nil {
+		attrs = append(attrs, "github_id", *e.GitHubID)
+	}
+	s.Security(e.Kind, attrs...)
+	tenant, err := store.OwnerTenant(ctx, s.Pool, s.Config.OwnerName)
+	if err == nil {
+		err = store.WithTenant(ctx, s.Pool, tenant, func(tx pgx.Tx) error { return store.AddAuthEvent(ctx, tx, tenant, e) })
+	}
+	if err != nil && s.Log != nil {
+		s.Log.Error("recording a sign-in event", "err", err)
+	}
 }
 
 func New(pool *pgxpool.Pool, cfg config.Config) *Service {
@@ -86,8 +141,8 @@ func randomToken() string {
 // without one carry on anonymously; handlers decide what that allows.
 func (s *Service) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c, err := r.Cookie(SessionCookie); err == nil && c.Value != "" {
-			sess, err := store.LookupSession(r.Context(), s.Pool, hashToken(c.Value))
+		if hash := s.CurrentTokenHash(r); hash != "" {
+			sess, err := store.LookupSession(r.Context(), s.Pool, hash)
 			if err == nil && time.Now().Before(sess.ExpiresAt) {
 				id := Identity{TenantID: sess.TenantID, Role: sess.Role, Expires: sess.ExpiresAt}
 				if sess.GitHubLogin != nil {
@@ -109,7 +164,7 @@ func (s *Service) startSession(w http.ResponseWriter, ctx context.Context, sess 
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: token, Path: "/", Expires: sess.ExpiresAt,
+		Name: s.SessionCookieName(), Value: token, Path: "/", Expires: sess.ExpiresAt,
 		HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode,
 	})
 	return nil
@@ -117,16 +172,19 @@ func (s *Service) startSession(w http.ResponseWriter, ctx context.Context, sess 
 
 // Logout ends the current session.
 func (s *Service) Logout(w http.ResponseWriter, r *http.Request) error {
-	if c, err := r.Cookie(SessionCookie); err == nil {
+	if hash := s.CurrentTokenHash(r); hash != "" {
 		if id, ok := FromContext(r.Context()); ok {
 			if err := store.WithTenant(r.Context(), s.Pool, id.TenantID, func(tx pgx.Tx) error {
-				return store.DeleteSession(r.Context(), tx, hashToken(c.Value))
+				return store.DeleteSession(r.Context(), tx, hash)
 			}); err != nil {
 				return err
 			}
+			if id.Owner() {
+				s.record(r.Context(), store.AuthEvent{Kind: "signed_out", Login: id.Login})
+			}
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: s.SessionCookieName(), Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode})
 	return nil
 }
 
@@ -136,15 +194,21 @@ func (s *Service) DevLogin(w http.ResponseWriter, r *http.Request) error {
 	if !s.Config.DevLogin || s.Config.Production() {
 		return ErrForbidden
 	}
-	return s.ownerSession(w, r.Context(), "dev")
+	return s.ownerSession(w, r, "dev", nil)
 }
 
-func (s *Service) ownerSession(w http.ResponseWriter, ctx context.Context, login string) error {
+func (s *Service) ownerSession(w http.ResponseWriter, r *http.Request, login string, githubID *int64) error {
+	ctx := r.Context()
 	tenant, err := store.OwnerTenant(ctx, s.Pool, s.Config.OwnerName)
 	if err != nil {
 		return err
 	}
-	return s.startSession(w, ctx, store.Session{TenantID: tenant, Role: "owner", GitHubLogin: &login, ExpiresAt: time.Now().Add(OwnerTTL)})
+	if err := s.startSession(w, ctx, store.Session{TenantID: tenant, Role: "owner", GitHubLogin: &login,
+		ExpiresAt: time.Now().Add(OwnerTTL), Device: analytics.Device(r.UserAgent())}); err != nil {
+		return err
+	}
+	s.record(ctx, store.AuthEvent{Kind: "signed_in", Login: login, GitHubID: githubID, Detail: analytics.Device(r.UserAgent())})
+	return nil
 }
 
 var (
@@ -163,7 +227,7 @@ func (s *Service) GitHubStart(w http.ResponseWriter, r *http.Request) error {
 	}
 	state := randomToken()
 	http.SetCookie(w, &http.Cookie{
-		Name: stateCookie, Value: state, Path: "/auth/github", MaxAge: 600,
+		Name: s.cookieName(stateCookie), Value: state, Path: "/", MaxAge: 600,
 		HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode,
 	})
 	q := url.Values{"client_id": {s.Config.GitHubClientID}, "redirect_uri": {s.redirectURI()}, "state": {state}, "allow_signup": {"false"}}
@@ -175,8 +239,8 @@ func (s *Service) GitHubStart(w http.ResponseWriter, r *http.Request) error {
 // user is and admits only the owner. No scopes are requested, and GitHub's token is discarded
 // once the user's ID is known.
 func (s *Service) GitHubCallback(w http.ResponseWriter, r *http.Request) error {
-	c, err := r.Cookie(stateCookie)
-	http.SetCookie(w, &http.Cookie{Name: stateCookie, Path: "/auth/github", MaxAge: -1, HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode})
+	c, err := r.Cookie(s.cookieName(stateCookie))
+	http.SetCookie(w, &http.Cookie{Name: s.cookieName(stateCookie), Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.Config.SecureCookies(), SameSite: http.SameSiteLaxMode})
 	state := r.URL.Query().Get("state")
 	if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(c.Value), []byte(state)) != 1 {
 		return fmt.Errorf("%w: state mismatch", ErrOAuth)
@@ -194,9 +258,10 @@ func (s *Service) GitHubCallback(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if s.Config.OwnerGitHubID == 0 || user.ID != s.Config.OwnerGitHubID {
+		s.record(r.Context(), store.AuthEvent{Kind: "refused", Login: user.Login, GitHubID: &user.ID, Detail: "not the owner's account"})
 		return ErrNotOwner
 	}
-	return s.ownerSession(w, r.Context(), user.Login)
+	return s.ownerSession(w, r, user.Login, &user.ID)
 }
 
 func (s *Service) exchange(ctx context.Context, code string) (string, error) {
@@ -267,7 +332,8 @@ func (s *Service) Sandbox(w http.ResponseWriter, r *http.Request) error {
 	if err := store.CreateSandbox(ctx, s.Pool, tenant, func(tx pgx.Tx) error { return SeedSandbox(ctx, tx, tenant) }); err != nil {
 		return err
 	}
-	return s.startSession(w, ctx, store.Session{TenantID: tenant, Role: "sandbox", ExpiresAt: time.Now().Add(s.Config.SandboxTTL)})
+	s.Security("sandbox_created")
+	return s.startSession(w, ctx, store.Session{TenantID: tenant, Role: "sandbox", ExpiresAt: time.Now().Add(s.Config.SandboxTTL), Device: analytics.Device(r.UserAgent())})
 }
 
 // SeedSandbox adds the sample monitors a sandbox starts with: simulated sites, so a visitor can

@@ -85,3 +85,21 @@ test('a sandbox can be put back to how it started', async ({ page }) => {
   await page.getByRole('button', { name: 'Start over' }).click();
   await expect(page.getByRole('row', { name: /Storefront/ })).toBeVisible();
 });
+
+test('the owner sees his sessions and sign-ins, and can sign out everywhere else', async ({ page, browser }) => {
+  await signIn(page);
+  const elsewhere = await browser.newPage();
+  await signIn(elsewhere);
+
+  await page.getByRole('link', { name: 'Security' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Who is signed in, and who has tried');
+  await expect(page.getByText('This session')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Signed in' }).first()).toBeVisible();
+
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'Sign out everywhere else' }).click();
+  await expect(page.getByRole('button', { name: 'Sign out everywhere else' })).toHaveCount(0);
+
+  // The other browser finds out on its next request, and is returned to the start.
+  await expect(elsewhere.getByRole('status')).toContainText('Your session has ended', { timeout: 30_000 });
+});

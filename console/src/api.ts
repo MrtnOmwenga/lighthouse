@@ -169,6 +169,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return res.json() as Promise<T>;
 }
 
+export interface SessionInfo { id: string; login: string | null; device: string; createdAt: string; expiresAt: string; current: boolean }
+export interface AuthEvent { id: number; at: string; kind: 'signed_in' | 'refused' | 'signed_out' | 'sessions_ended'; login: string; githubId: number | null; detail: string }
+export interface Security { sessions: SessionInfo[]; events: AuthEvent[] }
 export interface TestResult { ok: boolean; latencyMs: number; statusCode?: number; failure?: string }
 export interface Overview { monitors: Monitor[]; stats: StatusMonitor[] }
 
@@ -179,6 +182,9 @@ export const api = {
   resetSandbox: () => call<void>('POST', '/api/sandbox/reset'),
   devLogin: () => call<{ role: Role }>('POST', '/auth/dev'),
   logout: () => call<void>('POST', '/auth/logout'),
+  security: () => call<Security>('GET', '/api/security'),
+  endSession: (id: string) => call<void>('DELETE', `/api/sessions/${id}`),
+  endOtherSessions: () => call<{ ended: number }>('POST', '/api/sessions/end-others'),
 
   overview: () => call<Overview>('GET', '/api/overview'),
   monitors: () => call<Monitor[]>('GET', '/api/monitors'),
