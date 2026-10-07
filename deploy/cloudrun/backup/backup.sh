@@ -24,21 +24,27 @@ fail() { echo "$WORDS: $*"; exit 1; }
 trap 'code=$?; [ "$code" -eq 0 ] || [ -n "${SAID:-}" ] || echo "$WORDS: stopped early with status $code"' EXIT
 said() { SAID=1; fail "$@"; }
 
+# curl, not the image's built-in wget: BusyBox wget cuts an uploaded file at its first zero byte,
+# which turned every dump into seven bytes. (The restore test is what noticed.)
+command -v curl >/dev/null || [ -n "${LOCAL_STORE:-}" ] || apk add --no-cache --quiet curl || said "could not install curl"
+
 token() {
-  wget -qO- --header 'Metadata-Flavor: Google' \
+  curl -sS --fail -H 'Metadata-Flavor: Google' \
     http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token |
     sed -E 's/.*"access_token" *: *"([^"]+)".*/\1/'
 }
 encode() { printf %s "$1" | sed 's#/#%2F#g'; }
 # LOCAL_STORE (a directory) stands in for the bucket when the script is tried outside Google.
-put() { # file, object name
+put() { # file, object name. Fails unless the bucket reports the same number of bytes.
   if [ -n "${LOCAL_STORE:-}" ]; then mkdir -p "$(dirname "$LOCAL_STORE/$2")" && cp "$1" "$LOCAL_STORE/$2"; return; fi
-  wget -qO /dev/null --header "Authorization: Bearer $(token)" --header 'Content-Type: application/octet-stream' \
-    --post-file "$1" "https://storage.googleapis.com/upload/storage/v1/b/$BUCKET/o?uploadType=media&name=$(encode "$2")"
+  answer="$(curl -sS --fail -X POST -H "Authorization: Bearer $(token)" -H 'Content-Type: application/octet-stream' \
+    --data-binary "@$1" "https://storage.googleapis.com/upload/storage/v1/b/$BUCKET/o?uploadType=media&name=$(encode "$2")")" || return 1
+  stored="$(printf %s "$answer" | tr -d '\n' | sed -E 's/.*"size" *: *"([0-9]+)".*/\1/')"
+  [ "$stored" = "$(wc -c <"$1" | tr -d ' ')" ] || { echo "stored $stored bytes of $(wc -c <"$1") for $2"; return 1; }
 }
 get() { # object name, file
   if [ -n "${LOCAL_STORE:-}" ]; then cp "$LOCAL_STORE/$1" "$2"; return; fi
-  wget -qO "$2" --header "Authorization: Bearer $(token)" "https://storage.googleapis.com/storage/v1/b/$BUCKET/o/$(encode "$1")?alt=media"
+  curl -sS --fail -o "$2" -H "Authorization: Bearer $(token)" "https://storage.googleapis.com/storage/v1/b/$BUCKET/o/$(encode "$1")?alt=media"
 }
 store() { # file, name: by date and as the latest
   put "$1" "$DAY/$2" || said "could not store $DAY/$2"
