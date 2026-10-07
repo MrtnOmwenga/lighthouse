@@ -64,9 +64,12 @@ resource "google_cloud_run_v2_service" "app" {
   deletion_protection = false
 
   template {
-    service_account                  = google_service_account.run[each.key].email
-    timeout                          = local.shape[each.key].timeout # WebSockets stay open this long, then reconnect
-    session_affinity                 = true
+    service_account = google_service_account.run[each.key].email
+    timeout         = local.shape[each.key].timeout # WebSockets stay open this long, then reconnect
+    # Off: with one instance there is nothing to stick to, and turning it on makes Google's front
+    # end set a 30-day cookie (GAESA) on every visitor, which the privacy page says doesn't happen.
+    # It becomes useful, for the demos' WebSockets, only with more than one instance.
+    session_affinity                 = false
     max_instance_request_concurrency = 250
 
     scaling {
