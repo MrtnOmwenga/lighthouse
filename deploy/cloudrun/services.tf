@@ -24,6 +24,13 @@ locals {
       TICK_CALLER            = google_service_account.scheduler.email
       DATABASE_URL           = local.lighthouse_db
       EDGE_SECRET            = random_password.edge.result
+      # Incident emails: sent from smtp_username to alert_email when a public monitor goes down
+      # or recovers. Lighthouse sends none unless ALERT_TO is set.
+      SMTP_HOST     = var.smtp_username == "" ? "" : var.smtp_host
+      SMTP_PORT     = "587"
+      SMTP_USERNAME = var.smtp_username
+      ALERT_FROM    = var.smtp_username
+      ALERT_TO      = var.smtp_username == "" ? "" : var.alert_email
     }
     redacted = {
       NODE_ENV              = "production"
@@ -45,6 +52,7 @@ locals {
     lighthouse = {
       PGPASSWORD           = google_secret_manager_secret.s["lighthouse-db-app"].secret_id
       GITHUB_CLIENT_SECRET = google_secret_manager_secret.s["lighthouse-github-secret"].secret_id
+      SMTP_PASSWORD        = google_secret_manager_secret.s["lighthouse-smtp-password"].secret_id
     }
     redacted  = { PGPASSWORD = google_secret_manager_secret.s["redacted-db-app"].secret_id }
     ghostchat = { MONGODB_URI = google_secret_manager_secret.s["ghostchat-mongodb-uri"].secret_id }

@@ -30,6 +30,8 @@ GitHub Actions ── OIDC, no stored keys ──▶ Artifact Registry ──▶
 | `scheduler.tf` | Lighthouse's clock: an idle Cloud Run instance gets no CPU, so Cloud Scheduler calls `/internal/tick` |
 | `databases.tf` | Two Neon projects, one per app |
 | `secrets.tf` | Secret Manager: the credentials, each readable only by its own service |
+| `infisical.tf` | Reads the secrets a person had to obtain from Infisical, as ephemeral values that never reach Terraform's state |
+| `alerts.tf` | An email when a sign-in is refused or a scheduler call is rejected (a log-based alert) |
 | `identity.tf` | A service account per service, the scheduler's caller identity, and keyless deploys from GitHub |
 | `registry.tf` | Artifact Registry, with a cleanup policy |
 | `edge.tf`, `edge/worker.js` | The Cloudflare Worker, its routes and DNS |
@@ -42,7 +44,7 @@ Every choice below exists because a free allowance has a limit:
 |---|---|
 | Cloud Run: 180,000 vCPU-seconds, 360,000 GiB-seconds, 2M requests a month; us-east4 is a Tier 1 region | Scale to zero, CPU only while handling requests, one instance per service |
 | Neon: **100 compute-hours a month per project**, a compute sleeps after 5 idle minutes | A project per app, and ticks every **15 minutes**, not every minute: the database then sleeps most of the time (roughly 60–70 hours a month instead of the ~180 an always-awake one would use) |
-| Secret Manager: 6 active secret versions | Exactly six: both apps' owner and app database passwords, the OAuth client secret, the MongoDB URI. The demos' token-signing keys and the edge secret are plain environment variables: anyone who can read a service's settings can already deploy code that reads its secrets |
+| Secret Manager: 6 active secret versions | Seven are kept, one over: both apps' owner and app database passwords, the OAuth client secret, the MongoDB URI, and the mailbox password for incident emails (about $0.06 a month). The demos' signing keys and the edge secret are plain environment variables. |
 | Artifact Registry: 0.5 GB | The two newest versions of each image are kept (about 290 MB); only the amd64 image is copied |
 | Google egress: 1 GB a month within North America | The Worker caches static files at the edge, so repeat downloads never reach Google |
 | Cloud Scheduler: 3 jobs per billing account | One |
@@ -88,7 +90,7 @@ cd deploy/cloudrun
 cp terraform.tfvars.example terraform.tfvars   # project, Neon org, Cloudflare IDs, domain, OAuth client ID
 cp backend.hcl.example backend.hcl
 export CLOUDFLARE_API_TOKEN=... NEON_API_KEY=... AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
-export TF_VAR_github_client_secret=... TF_VAR_ghostchat_mongodb_uri=...
+export INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=... INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=...   # a machine identity that can read the project
 # OCI's S3 API rejects the chunked uploads newer AWS SDKs send by default (the state lock fails).
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 terraform init -backend-config=backend.hcl
