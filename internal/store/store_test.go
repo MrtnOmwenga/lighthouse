@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/MrtnOmwenga/lighthouse/internal/store"
 	"github.com/MrtnOmwenga/lighthouse/internal/testdb"
@@ -304,5 +305,38 @@ func TestDueWithSlack(t *testing.T) {
 	must(t, claim(ms.ID, time.Minute))
 	if err := claim(ms.ID, time.Minute); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("a claimed monitor is a full interval away, beyond any slack: %v", err)
+	}
+}
+
+// Every migration can be undone, and applied again afterwards: all the way down, and back up.
+func TestMigrationsRunDownAndUpAgain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := testdb.New(t)
+	owner := stdlib.OpenDBFromPool(db.Owner)
+	tables := func() int {
+		var n int
+		if err := db.Owner.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'goose_db_version'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := tables()
+	if before == 0 {
+		t.Fatal("the test database should start migrated")
+	}
+	must(t, store.MigrateTo(ctx, owner, 0))
+	if n := tables(); n != 0 {
+		t.Fatalf("after migrating all the way down, %d tables are left", n)
+	}
+	must(t, store.MigrateTo(ctx, owner, -1))
+	if n := tables(); n != before {
+		t.Fatalf("after migrating up again: %d tables, want %d", n, before)
+	}
+	// And it works: a tenant can be created and its monitor found due, as the application role.
+	a := sandbox(t, db)
+	must(t, in(t, db, a, func(tx pgx.Tx) error { _, err := store.CreateMonitor(ctx, tx, a, simulated("again")); return err }))
+	if due, err := store.DueMonitors(ctx, db.App, 10, 0); err != nil || len(due) != 1 {
+		t.Fatalf("after the round trip: %v %v", due, err)
 	}
 }

@@ -46,6 +46,31 @@ func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID string, fn fun
 	})
 }
 
+// MigrateTo moves the schema to a version: up to the latest when version is negative, otherwise
+// up or down to exactly that one (0 undoes everything). Going down is for undoing a migration by
+// hand, and for testing that every migration can be undone.
+func MigrateTo(ctx context.Context, db *sql.DB, version int64) error {
+	goose.SetBaseFS(migrations)
+	goose.SetLogger(goose.NopLogger())
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+	var err error
+	if version < 0 {
+		err = goose.UpContext(ctx, db, "migrations")
+	} else if current, verr := goose.GetDBVersionContext(ctx, db); verr != nil {
+		err = verr
+	} else if version < current {
+		err = goose.DownToContext(ctx, db, "migrations", version)
+	} else {
+		err = goose.UpToContext(ctx, db, "migrations", version)
+	}
+	if err != nil {
+		return fmt.Errorf("migrations: %w", err)
+	}
+	return nil
+}
+
 // Migrate applies the migrations as the database owner (ownerURL), then makes sure the API's login
 // role (the user in appURL, with appPassword) exists and is a member of lighthouse_app.
 func Migrate(ctx context.Context, ownerURL, appURL, appPassword string) error {
@@ -54,13 +79,8 @@ func Migrate(ctx context.Context, ownerURL, appURL, appPassword string) error {
 		return err
 	}
 	defer db.Close()
-	goose.SetBaseFS(migrations)
-	goose.SetLogger(goose.NopLogger())
-	if err := goose.SetDialect("postgres"); err != nil {
+	if err := MigrateTo(ctx, db, -1); err != nil {
 		return err
-	}
-	if err := goose.UpContext(ctx, db, "migrations"); err != nil {
-		return fmt.Errorf("migrations: %w", err)
 	}
 	if appURL == "" {
 		return nil
