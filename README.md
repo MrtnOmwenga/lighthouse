@@ -200,7 +200,7 @@ on Google Cloud Run behind a Cloudflare edge ([`deploy/`](deploy/README.md)).
   one, accepted only from that repository's release branch): copy to Artifact Registry, run the
   migrations as a job, deploy by digest, smoke-test through the edge.
 - **Free by design.** Every setting follows from a free-tier limit: a Neon project per app, 15-minute
-  ticks so the databases can sleep, exactly six secrets, two image versions kept, static files
+  ticks so the databases can sleep, seven secrets (one over the free six), two image versions kept, static files
   cached at the edge. All of it is Terraform ([`deploy/cloudrun`](deploy/cloudrun)).
 
 **It also runs on Kubernetes.** [`deploy/terraform`](deploy/terraform) and

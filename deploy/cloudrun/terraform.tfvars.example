@@ -1,5 +1,6 @@
 # Copy to terraform.tfvars (git-ignored). Secrets come from the environment instead:
-#   TF_VAR_github_client_secret, TF_VAR_ghostchat_mongodb_uri, NEON_API_KEY, CLOUDFLARE_API_TOKEN
+#   INFISICAL_UNIVERSAL_AUTH_CLIENT_ID, INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, NEON_API_KEY,
+#   CLOUDFLARE_API_TOKEN. The application's own secrets are read from Infisical (infisical.tf).
 gcp_project           = "my-project-123"
 neon_org_id           = "org-..."
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
@@ -7,3 +8,5 @@ cloudflare_zone_id    = "0123456789abcdef0123456789abcdef"
 domain                = "example.com"
 github_client_id      = "Ov23..."
 alert_email           = "you@example.com"
+infisical_project_id  = "00000000-0000-0000-0000-000000000000"
+smtp_username         = "alerts@example.com"
