@@ -34,6 +34,11 @@ resource "cloudflare_workers_script" "edge" {
     },
     {
       type = "plain_text"
+      name = "PAGE_HOSTS" # whose public pages the edge keeps a copy of
+      text = jsonencode([local.hosts.lighthouse])
+    },
+    {
+      type = "plain_text"
       name = "SECRET_HOSTS"
       text = jsonencode([local.hosts.lighthouse])
     },

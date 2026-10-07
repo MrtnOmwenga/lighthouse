@@ -1,6 +1,6 @@
 {{template "head" (printf "Systems data · The Lighthouse")}}
 <noscript><meta http-equiv="refresh" content="60"></noscript>
-<script src="/static/status.js" defer></script>
+<script src="{{asset "status.js"}}" defer></script>
 <meta name="description" content="Live uptime, response times and incident reports for {{.Owner}}'s projects.">
 {{template "social" (social . "/status" (printf "Systems data · %s" .Owner) (printf "Live uptime, response times and incident reports for %s's projects." .Owner))}}
 </head>
