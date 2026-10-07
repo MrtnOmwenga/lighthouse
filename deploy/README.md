@@ -82,8 +82,13 @@ A budget alert on the billing account is the safety net.
    and network access from anywhere (`0.0.0.0/0`: Cloud Run has no fixed address; the password and
    TLS protect the connection). Network access is set per Atlas *project*, not per cluster.
 5. **A GitHub OAuth app** for the owner sign-in: callback `https://<domain>/auth/github/callback`.
-6. **Terraform state:** an S3-compatible bucket (here, OCI Object Storage, free; see
-   `backend.hcl.example`).
+6. **Terraform state:** a Cloud Storage bucket in the same project, created once by hand because
+   Terraform can't keep its state in a bucket it has yet to create:
+   `gcloud storage buckets create gs://<project>-tfstate --location us-east1 --uniform-bucket-level-access --public-access-prevention`
+   then `gcloud storage buckets update gs://<project>-tfstate --versioning` (see `backend.hcl.example`).
+7. **Infisical:** a project holding the secrets, and a machine identity that can read it.
+8. **Optional:** a Grafana Cloud stack (metrics, a dashboard, the alert when Lighthouse stops
+   reporting) and a mailbox for incident emails.
 
 ### Steps
 
@@ -91,10 +96,10 @@ A budget alert on the billing account is the safety net.
 cd deploy/cloudrun
 cp terraform.tfvars.example terraform.tfvars   # project, Neon org, Cloudflare IDs, domain, OAuth client ID
 cp backend.hcl.example backend.hcl
-export CLOUDFLARE_API_TOKEN=... NEON_API_KEY=... AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+gcloud auth application-default login          # Google resources, and the state bucket
+export CLOUDFLARE_API_TOKEN=... NEON_API_KEY=...
 export INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=... INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=...   # a machine identity that can read the project
-# OCI's S3 API rejects the chunked uploads newer AWS SDKs send by default (the state lock fails).
-export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+export GRAFANA_URL=... GRAFANA_AUTH=...          # only with metrics_push_url set
 terraform init -backend-config=backend.hcl
 terraform apply            # the services start with a placeholder image
 terraform output github_actions

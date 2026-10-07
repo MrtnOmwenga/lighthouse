@@ -8,9 +8,9 @@ terraform {
     infisical  = { source = "infisical/infisical", version = ">= 0.15" }
     grafana    = { source = "grafana/grafana", version = ">= 3.0" }
   }
-  # State lives in OCI Object Storage's S3-compatible API (free), next to the k3s stack's state
-  # but under its own key. See backend.hcl.example.
-  backend "s3" {}
+  # State lives in a Cloud Storage bucket in the same project (versioned, private; created once by
+  # hand, see deploy/README.md). See backend.hcl.example.
+  backend "gcs" {}
 }
 
 provider "google" {
