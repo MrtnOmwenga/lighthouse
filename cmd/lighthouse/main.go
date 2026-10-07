@@ -77,7 +77,8 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 
-	scheduler := &monitor.Scheduler{Pool: pool, Prober: monitor.NewProber(), Workers: cfg.CheckWorkers, Log: log}
+	scheduler := &monitor.Scheduler{Pool: pool, Prober: monitor.NewProber(), Workers: cfg.CheckWorkers, Log: log,
+		Confirm: cfg.ConfirmAfter, Warm: cfg.WarmAbove}
 	if len(cfg.AlertTo) > 0 {
 		notifier := &alert.Notifier{
 			Mailer: &alert.Mailer{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,

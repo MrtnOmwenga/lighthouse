@@ -48,6 +48,7 @@ export interface Check {
   latencyMs: number;
   failure: string | null;
   tlsExpiresAt: string | null;
+  warmup: boolean; // woke a sleeping service: counts for uptime, not for response times
 }
 
 export type Status = 'open' | 'in_progress' | 'resolved';

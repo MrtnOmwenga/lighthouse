@@ -104,7 +104,7 @@ async function save(input: MonitorInput) {
           <tbody>
             <tr v-for="c in checks.slice(0, 30)" :key="c.id">
               <td>{{ when(c.at) }}</td>
-              <td><span class="status" :class="c.ok ? 'up' : 'down'">{{ c.ok ? '● Passed' : '● Failed' }}</span></td>
+              <td><span class="status" :class="c.ok ? 'up' : 'down'">{{ c.ok ? '● Passed' : '● Failed' }}</span><span v-if="c.warmup" class="caption block">woke it up</span></td>
               <td class="num">{{ c.statusCode ?? '–' }}</td>
               <td class="num">{{ c.latencyMs }} ms</td>
               <td>{{ c.failure ?? '' }}</td>

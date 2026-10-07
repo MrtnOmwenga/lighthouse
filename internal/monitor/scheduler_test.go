@@ -390,3 +390,109 @@ func TestRunTenant(t *testing.T) {
 		t.Fatalf("a second read straight away started %d checks", n)
 	}
 }
+
+func (f *fixture) checks(monitorID string) []store.Check {
+	f.t.Helper()
+	var checks []store.Check
+	f.do(func(tx pgx.Tx) (err error) {
+		checks, err = store.RecentChecks(context.Background(), tx, monitorID, 0, 100)
+		return
+	})
+	return checks
+}
+
+// With confirmation on, a state that starts to change is settled in the same round: an outage
+// becomes an incident, and a recovery closes it, without waiting for further rounds. A single
+// blip is checked again and comes to nothing.
+func TestConfirmationSettlesWithinOneRound(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.sched.Confirm = 10 * time.Millisecond
+	var status atomic.Int32
+	var blips atomic.Int32
+	status.Store(200)
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if blips.Add(-1) >= 0 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(int(status.Load()))
+	}))
+	defer site.Close()
+	in := input("http") // down after 2 failures, up after 2 successes
+	in.URL = &site.URL
+	in.AllowPrivateNetwork = true
+	m := f.create(in)
+	f.tick()
+	if got := f.monitor(m.ID); got.Health != "up" || len(f.checks(m.ID)) != 1 {
+		t.Fatalf("a healthy site needs one check: %s after %d", got.Health, len(f.checks(m.ID)))
+	}
+
+	// One failed answer, then fine again: checked a second time, no incident.
+	blips.Store(1)
+	f.tick()
+	if got := f.monitor(m.ID); got.Health != "up" || len(f.incidents()) != 0 || len(f.checks(m.ID)) != 3 {
+		t.Fatalf("a blip: health %s, %d incidents, %d checks (want up, 0, 3)", got.Health, len(f.incidents()), len(f.checks(m.ID)))
+	}
+
+	// A real outage: confirmed and opened in one round.
+	status.Store(500)
+	f.tick()
+	if got := f.monitor(m.ID); got.Health != "down" || len(f.incidents()) != 1 || len(f.checks(m.ID)) != 5 {
+		t.Fatalf("an outage: health %s, %d incidents, %d checks (want down, 1, 5)", got.Health, len(f.incidents()), len(f.checks(m.ID)))
+	}
+	// Still down: nothing is changing, so one check a round.
+	f.tick()
+	if n := len(f.checks(m.ID)); n != 6 {
+		t.Fatalf("a settled outage is checked once a round: %d checks", n)
+	}
+
+	// And the recovery.
+	status.Store(200)
+	f.tick()
+	got := f.monitor(m.ID)
+	if got.Health != "up" || got.OpenIncidentID != nil || f.incidents()[0].Status != "resolved" || len(f.checks(m.ID)) != 8 {
+		t.Fatalf("a recovery: %+v, %d checks", got, len(f.checks(m.ID)))
+	}
+}
+
+// A slow first answer is taken as the service waking up: recorded as a warm-up, followed at once
+// by a second check, and left out of the response-time figures.
+func TestWarmupIsRecordedApart(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.sched.Warm = 80 * time.Millisecond
+	var asleep atomic.Bool
+	asleep.Store(true)
+	site := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		if asleep.Swap(false) {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}))
+	defer site.Close()
+	in := input("http")
+	in.URL = &site.URL
+	in.AllowPrivateNetwork = true
+	m := f.create(in)
+	f.tick()
+
+	checks := f.checks(m.ID) // newest first
+	if len(checks) != 2 || !checks[1].Warmup || checks[1].LatencyMS < 200 || checks[0].Warmup || !checks[0].OK || !checks[1].OK {
+		t.Fatalf("want a warm-up then a normal check: %+v", checks)
+	}
+	var stats map[string]store.Uptime
+	f.do(func(tx pgx.Tx) (err error) {
+		stats, err = store.UptimeStats(context.Background(), tx, []string{m.ID}, time.Now())
+		return
+	})
+	u := stats[m.ID]
+	if u.Checks24h != 2 || u.OK24h != 2 || u.P50 == nil || *u.P50 >= 80 {
+		t.Fatalf("both count for uptime, only the second for response time: %+v (p50 %v)", u, u.P50)
+	}
+
+	// Awake now: one check a round.
+	f.tick()
+	if n := len(f.checks(m.ID)); n != 3 {
+		t.Fatalf("an awake service is checked once: %d checks", n)
+	}
+}

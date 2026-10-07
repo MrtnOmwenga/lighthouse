@@ -69,6 +69,12 @@ type Config struct {
 	// TickSlack: in external mode, how far ahead of its time a monitor counts as due (never more
 	// than a tenth of its interval), so calls that arrive a little early don't skip it.
 	TickSlack time.Duration
+	// ConfirmAfter: how soon to re-check an HTTP monitor whose state has started to change, so an
+	// outage is confirmed in about a minute. Zero waits for the monitor's next scheduled check.
+	ConfirmAfter time.Duration
+	// WarmAbove: a passing HTTP check slower than this is taken to have woken a sleeping service,
+	// recorded as a warm-up, and repeated at once. Zero records every check as it comes.
+	WarmAbove time.Duration
 }
 
 // ExternalSchedule reports whether checks are driven by calls to /internal/tick.
@@ -121,6 +127,8 @@ func Load(getenv func(string) string) (Config, error) {
 		Schedule:           get("SCHEDULE", "loop"),
 		TickCaller:         get("TICK_CALLER", ""),
 		TickSlack:          time.Duration(integer("TICK_SLACK_SECONDS", 60, 0, 600)) * time.Second,
+		ConfirmAfter:       time.Duration(integer("CONFIRM_SECONDS", 0, 0, 60)) * time.Second,
+		WarmAbove:          time.Duration(integer("WARM_THRESHOLD_MS", 0, 0, 30000)) * time.Millisecond,
 	}
 	c.TickAudience = get("TICK_AUDIENCE", c.PublicURL+"/internal/tick")
 	if owner := get("OWNER_GITHUB_ID", "0"); owner != "0" {
