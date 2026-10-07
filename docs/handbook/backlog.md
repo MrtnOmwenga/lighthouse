@@ -23,8 +23,22 @@ until the daily summaries of item 36.
 | 5 | **Security and sign-in** | 38, 39, 40, 42, 17, 25 (16 moves to the demos' own reviews; 26 goes with Infisical in phase 8) | Live (#27, #28, #29). Not built: the daily digest of unusual log entries (part of 42) |
 | 6 | **Better monitoring** | 33, 32 (replaces 11), 36, 10, 34, 13 | Live (#31, #32; 13 with #30), with the Grafana dashboard and its two alerts applied. Not built yet: 36 (daily summaries) |
 | 7 | **Analytics for the job search** | 43, 44, 45, 46, 51 | Live (#33): 44, 45, and 43 (a link generator per tracker row, outside this repository). 46 decided against for now (the email link is counted instead). 51 waits for a few weeks of clean data |
-| 8 | **Resilience and operations** | 12, 19, 20, 8, 22, 18, 14, 15, 21 | 15 live (#30: secrets kept in Infisical, read by Terraform without entering its state), with part of 26 |
+| 8 | **Resilience and operations** | 12, 19, 20, 8, 22, 18, 14, 15, 21 | Live: 15 with part of 26 (#30), 12 and 19 (#34 to #36), 14 (#37), 8, 22 and 18 (#38). 20 decided against (below). 21 moves to the demos' own reviews |
 | Later | Separate projects or optional | 23, 24, 31, 47, 55 | |
+
+**Canary releases (item 20) decided against.** Each release already starts its new revision
+without traffic, tests it there, moves traffic, tests again through the edge and moves traffic
+back on failure. Sending 5% of visitors to a new revision first would add nothing at this site's
+traffic (tens of visits a week): there would be no signal to read before promoting.
+
+**What running things for real found** (each fixed the same day):
+
+- The first restore test failed, correctly: every "successful" backup was seven bytes, because
+  the image's built-in `wget` cuts an upload at its first zero byte (#35).
+- A release failed its own gate: it asked whether CI had passed a moment before the run that
+  started it appeared in the list (#36).
+- The release named each revision in a way that made the next Terraform change fail (#29).
+- Cloud Run's session affinity set a 30-day cookie on every visitor of all three sites (#28).
 
 Found while verifying phase 5 on the live site, and fixed (#28): Cloud Run's session affinity
 was on, which made Google's front end set a 30-day cookie on every visitor of all three sites.
