@@ -182,6 +182,7 @@ func (r *Recorder) Event(ctx context.Context, viewID, name string) error {
 // Report is the owner's private view of the last N days.
 type Report struct {
 	Since     time.Time           `json:"since"`
+	Summary   store.Summary       `json:"summary"`
 	Pages     []store.PageStat    `json:"pages"`
 	Projects  []store.ProjectStat `json:"projects"`
 	Refs      []store.RefStat     `json:"refs"`
@@ -192,6 +193,9 @@ type Report struct {
 func (r *Recorder) Report(ctx context.Context, days int) (Report, error) {
 	rep := Report{Since: r.Now().AddDate(0, 0, -days)}
 	err := store.WithTenant(ctx, r.Pool, r.OwnerTenant, func(tx pgx.Tx) (err error) {
+		if rep.Summary, err = store.SiteSummary(ctx, tx, rep.Since); err != nil {
+			return err
+		}
 		if rep.Pages, err = store.PageStats(ctx, tx, rep.Since); err != nil {
 			return err
 		}

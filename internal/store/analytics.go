@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -70,40 +71,69 @@ func PruneAnalytics(ctx context.Context, pool *pgxpool.Pool, keep time.Duration)
 	return n, err
 }
 
+// EngagedSeconds is how long a page must have been actively read for its visitor to count as
+// engaged. A view is recorded the moment a page loads, so a glance, a mis-click and a scanner
+// driving a real browser all look alike: one view, no reading. Opening a demo also counts.
+const EngagedSeconds = 5
+
+// engagedView is that test for a page_views row named v. A demo becoming ready happens by itself
+// on a launch page, so it isn't a sign of anyone being there.
+var engagedView = fmt.Sprintf(`(v.engaged_seconds >= %d OR EXISTS
+	(SELECT 1 FROM analytics_events x WHERE x.view_id = v.id AND x.name <> 'demo_ready'))`, EngagedSeconds)
+
+// Summary is the whole site's readership: everyone, and those who actually read something.
+type Summary struct {
+	Views           int `json:"views"`
+	Visitors        int `json:"visitors"`
+	EngagedVisitors int `json:"engagedVisitors"`
+}
+
+func SiteSummary(ctx context.Context, tx pgx.Tx, since time.Time) (Summary, error) {
+	var s Summary
+	err := tx.QueryRow(ctx, `SELECT count(*), count(DISTINCT (v.day, v.visitor)),
+			count(DISTINCT (v.day, v.visitor)) FILTER (WHERE `+engagedView+`)
+		FROM page_views v WHERE v.at >= $1`, since).Scan(&s.Views, &s.Visitors, &s.EngagedVisitors)
+	return s, err
+}
+
 // PageStat is how one page was read.
 type PageStat struct {
-	Path          string  `json:"path"`
-	Project       *string `json:"project"`
-	Views         int     `json:"views"`
-	Visitors      int     `json:"visitors"`
-	MedianEngaged float64 `json:"medianEngagedSeconds"`
+	Path            string  `json:"path"`
+	Project         *string `json:"project"`
+	Views           int     `json:"views"`
+	Visitors        int     `json:"visitors"`
+	EngagedVisitors int     `json:"engagedVisitors"`
+	MedianEngaged   float64 `json:"medianEngagedSeconds"`
 }
 
 func PageStats(ctx context.Context, tx pgx.Tx, since time.Time) ([]PageStat, error) {
-	rows, err := tx.Query(ctx, `SELECT path, min(project), count(*), count(DISTINCT (day, visitor)),
-			coalesce(percentile_cont(0.5) WITHIN GROUP (ORDER BY engaged_seconds), 0)
-		FROM page_views WHERE at >= $1 GROUP BY path ORDER BY count(*) DESC, path`, since)
+	rows, err := tx.Query(ctx, `SELECT v.path, min(v.project), count(*), count(DISTINCT (v.day, v.visitor)),
+			count(DISTINCT (v.day, v.visitor)) FILTER (WHERE `+engagedView+`),
+			coalesce(percentile_cont(0.5) WITHIN GROUP (ORDER BY v.engaged_seconds), 0)
+		FROM page_views v WHERE v.at >= $1 GROUP BY v.path ORDER BY count(*) DESC, v.path`, since)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PageStat, error) {
 		var s PageStat
-		return s, r.Scan(&s.Path, &s.Project, &s.Views, &s.Visitors, &s.MedianEngaged)
+		return s, r.Scan(&s.Path, &s.Project, &s.Views, &s.Visitors, &s.EngagedVisitors, &s.MedianEngaged)
 	})
 }
 
 // ProjectStat is how often a project was read about, launched and opened.
 type ProjectStat struct {
-	Project       string  `json:"project"`
-	Views         int     `json:"views"`
-	Visitors      int     `json:"visitors"`
-	MedianEngaged float64 `json:"medianEngagedSeconds"`
-	Launches      int     `json:"launches"` // visits to its launch page
-	Opens         int     `json:"opens"`    // the demo was actually opened
+	Project         string  `json:"project"`
+	Views           int     `json:"views"`
+	Visitors        int     `json:"visitors"`
+	EngagedVisitors int     `json:"engagedVisitors"`
+	MedianEngaged   float64 `json:"medianEngagedSeconds"`
+	Launches        int     `json:"launches"` // visits to its launch page
+	Opens           int     `json:"opens"`    // the demo was actually opened
 }
 
 func ProjectStats(ctx context.Context, tx pgx.Tx, since time.Time) ([]ProjectStat, error) {
 	rows, err := tx.Query(ctx, `SELECT v.project, count(*), count(DISTINCT (v.day, v.visitor)),
+			count(DISTINCT (v.day, v.visitor)) FILTER (WHERE `+engagedView+`),
 			coalesce(percentile_cont(0.5) WITHIN GROUP (ORDER BY v.engaged_seconds), 0),
 			count(*) FILTER (WHERE v.path LIKE '/go/%'),
 			count(e.id)
@@ -115,7 +145,7 @@ func ProjectStats(ctx context.Context, tx pgx.Tx, since time.Time) ([]ProjectSta
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (ProjectStat, error) {
 		var s ProjectStat
-		return s, r.Scan(&s.Project, &s.Views, &s.Visitors, &s.MedianEngaged, &s.Launches, &s.Opens)
+		return s, r.Scan(&s.Project, &s.Views, &s.Visitors, &s.EngagedVisitors, &s.MedianEngaged, &s.Launches, &s.Opens)
 	})
 }
 

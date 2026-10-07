@@ -5,6 +5,7 @@
 profile:
   strip: "A live portfolio. Every project on this page is running now, and every figure is measured by the site itself."
   portrait: portrait.jpg
+  preview: preview.png
   portrait_caption: Martin Omwenga, Nairobi.
   links:
     email: omwenga.mrtn@gmail.com

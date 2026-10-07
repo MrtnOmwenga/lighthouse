@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { api, type Report } from '../api';
 import { duration, when, slugify } from '../format';
 
@@ -19,7 +19,18 @@ async function load() {
 }
 watch(days, load, { immediate: true });
 
-const readers = computed(() => report.value?.projects.reduce((n, p) => n + p.visitors, 0) ?? 0);
+// This browser can be marked as the owner's, so its visits aren't counted when he is signed out.
+const excluded = ref(false);
+onMounted(async () => {
+  try { excluded.value = (await api.exclusion()).excluded; } catch { /* the report shows its own error */ }
+});
+async function setExcluded(value: boolean) {
+  try {
+    excluded.value = (await api.setExclusion(value)).excluded;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not change the setting.';
+  }
+}
 
 const company = ref('');
 const target = ref('/');
@@ -59,7 +70,21 @@ async function copy() {
       <p class="caption span-all">The tag is removed from the visitor's address bar once read, so it doesn't spread if they share the link.</p>
     </form>
 
+    <label class="check">
+      <input type="checkbox" :checked="excluded" @change="setExcluded(($event.target as HTMLInputElement).checked)">
+      Don't count visits from this browser, even when I'm signed out
+    </label>
+    <p class="caption">Set it once on each of your own browsers and devices. It lasts a year.</p>
+
     <template v-if="report">
+      <h2 class="section-title rule-top">Everyone</h2>
+      <div class="stats">
+        <div class="stat claret"><span class="k">Engaged readers</span><p class="v">{{ report.summary.engagedVisitors }}</p></div>
+        <div class="stat"><span class="k">All visitors</span><p class="v">{{ report.summary.visitors }}</p></div>
+        <div class="stat"><span class="k">Page views</span><p class="v">{{ report.summary.views }}</p></div>
+      </div>
+      <p class="caption">Counted per day since {{ when(report.since) }}. Engaged: read a page for at least five seconds, or opened a demo. The rest glanced and left, or were scanners.</p>
+
       <h2 class="section-title rule-top">Tagged links</h2>
       <p v-if="!report.refs.length" class="caption">No tagged link has been opened yet.</p>
       <div v-else class="table-wrap">
@@ -76,13 +101,12 @@ async function copy() {
       </div>
 
       <h2 class="section-title rule-top">Projects</h2>
-      <p class="caption">{{ readers }} reader-days across all projects since {{ when(report.since) }}.</p>
       <div class="table-wrap">
         <table class="data console-table">
-          <thead><tr><th scope="col">Project</th><th scope="col" class="num">Readers</th><th scope="col" class="num">Views</th><th scope="col" class="num">Median reading</th><th scope="col" class="num">Launch pages</th><th scope="col" class="num">Demos opened</th></tr></thead>
+          <thead><tr><th scope="col">Project</th><th scope="col" class="num">Engaged</th><th scope="col" class="num">Visitors</th><th scope="col" class="num">Views</th><th scope="col" class="num">Median reading</th><th scope="col" class="num">Launch pages</th><th scope="col" class="num">Demos opened</th></tr></thead>
           <tbody>
             <tr v-for="p in report.projects" :key="p.project">
-              <td class="name">{{ p.project }}</td><td class="num">{{ p.visitors }}</td><td class="num">{{ p.views }}</td>
+              <td class="name">{{ p.project }}</td><td class="num">{{ p.engagedVisitors }}</td><td class="num">{{ p.visitors }}</td><td class="num">{{ p.views }}</td>
               <td class="num">{{ duration(p.medianEngagedSeconds) }}</td><td class="num">{{ p.launches }}</td><td class="num">{{ p.opens }}</td>
             </tr>
           </tbody>

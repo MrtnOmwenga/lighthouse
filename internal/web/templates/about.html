@@ -1,5 +1,6 @@
 {{template "head" (printf "About %s · The Lighthouse" .Owner)}}
 <meta name="description" content="{{.Site.Profile.About.Standfirst}}">
+{{template "social" (social . "/about" (printf "About %s" .Owner) .Site.Profile.About.Standfirst)}}
 </head>
 <body>
 {{template "masthead" .}}

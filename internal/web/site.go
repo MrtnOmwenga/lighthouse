@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -52,7 +53,7 @@ func byPlacement(cards []card, p site.Placement) []card {
 
 // statusOrEmpty builds the public status; the portfolio pages still render without it.
 func (s *Server) statusOrEmpty(r *http.Request) status.Page {
-	page, err := status.Build(r.Context(), s.Pool, s.OwnerTenant, s.Now())
+	page, _, err := s.ownerStatus(r.Context())
 	if err != nil {
 		s.Log.Warn("status unavailable for a portfolio page", "err", err)
 	}
@@ -203,4 +204,37 @@ func (s *Server) projectReady(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		return writeJSON(w, http.StatusOK, map[string]bool{"ready": s.Readiness.Ready(r.Context(), p)})
 	})(w, r)
+}
+
+// robots asks crawlers to index the pages people read, and to leave the console, the API and the
+// launch pages (which wake demos) alone.
+func (s *Server) robots(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /console/\nDisallow: /api/\nDisallow: /auth/\nDisallow: /go/\n\nSitemap: %s/sitemap.xml\n", s.Config.PublicURL)
+}
+
+// sitemap lists the public pages: the fixed ones and a story per project that has one.
+func (s *Server) sitemap(w http.ResponseWriter, _ *http.Request) {
+	paths := []string{"/", "/projects"}
+	for _, p := range s.Site.Projects {
+		if s.Site.Stories[p.Slug] != nil {
+			paths = append(paths, "/projects/"+p.Slug)
+		}
+	}
+	if s.Site.Profile.About.Headline != "" {
+		paths = append(paths, "/about")
+	}
+	paths = append(paths, "/status", "/privacy")
+	var b strings.Builder
+	b.WriteString(xml.Header + `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	for _, p := range paths {
+		b.WriteString("  <url><loc>")
+		_ = xml.EscapeText(&b, []byte(s.Config.PublicURL+p))
+		b.WriteString("</loc></url>\n")
+	}
+	b.WriteString("</urlset>\n")
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write([]byte(b.String()))
 }

@@ -48,6 +48,15 @@ var funcs = template.FuncMap{
 	},
 	"dateline": func(t time.Time) string { return t.In(nairobi).Format("Monday 2 January 2006") },
 	"words":    func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	// social gathers what the "social" template needs: the page's address, and the title and
+	// description a link preview shows.
+	"social": func(d pageData, path, title, description string) map[string]string {
+		m := map[string]string{"URL": d.Base + path, "Title": title, "Description": description}
+		if d.Site != nil && d.Site.Profile.Preview != "" {
+			m["Image"] = d.Base + "/media/" + d.Site.Profile.Preview
+		}
+		return m
+	},
 	// latest is the most recent update written for people (not a status or severity change).
 	"latest": func(events []store.Event) *store.Event {
 		for i := len(events) - 1; i >= 0; i-- {
@@ -113,10 +122,12 @@ func plural(n int, unit string) string {
 
 type pageData struct {
 	Owner   string
+	Base    string // the site's public address, for absolute links
 	Section string // highlighted in the navigation
 	Now     time.Time
 	Site    *site.Site
 	Status  status.Page
+	Stale   bool // Status couldn't be rebuilt just now; it is the last one that was
 	// front page
 	Ticker                         []tickerItem
 	Leads, Sides, Features, Briefs []card
@@ -138,6 +149,7 @@ type pageData struct {
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data pageData) {
 	data.Owner = s.Config.OwnerName
+	data.Base = s.Config.PublicURL
 	data.Site = s.Site
 	if data.Now.IsZero() {
 		data.Now = s.Now()
@@ -159,19 +171,19 @@ func (s *Server) renderError(w http.ResponseWriter, code int, title, message str
 
 func (s *Server) statusPage(w http.ResponseWriter, r *http.Request) {
 	now := s.Now()
-	page, err := status.Build(r.Context(), s.Pool, s.OwnerTenant, now)
+	page, stale, err := s.ownerStatus(r.Context())
 	if err != nil {
 		s.Log.Error("status page", "err", err)
 		s.renderError(w, http.StatusServiceUnavailable, "Status unavailable", "The status page couldn't be built just now. Please try again in a minute.")
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=15")
-	s.render(w, http.StatusOK, "status.html", pageData{Section: "status", Now: now, Status: page, Incidents14d: len(page.Active) + len(page.Recent), Readership: s.readership(r)})
+	s.render(w, http.StatusOK, "status.html", pageData{Section: "status", Now: now, Status: page, Stale: stale, Incidents14d: len(page.Active) + len(page.Recent), Readership: s.readership(r)})
 }
 
 func (s *Server) publicStatus(w http.ResponseWriter, r *http.Request) {
 	s.errs(func(w http.ResponseWriter, r *http.Request) error {
-		page, err := status.Build(r.Context(), s.Pool, s.OwnerTenant, s.Now())
+		page, _, err := s.ownerStatus(r.Context())
 		if err != nil {
 			return err
 		}

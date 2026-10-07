@@ -54,6 +54,9 @@ type Config struct {
 	SandboxLimit  int           // new sandboxes per client per hour
 	RetentionDays int           // how long check results are kept
 
+	// StatusCache is how long the public status is reused before it is built again; every public
+	// page shows it. Zero builds it for each request.
+	StatusCache time.Duration
 	// Schedule is how checks get run. "loop" (the default): Lighthouse runs its own clock, which
 	// needs a process that's always running. "external": something else calls POST /internal/tick
 	// (Cloud Scheduler, on Cloud Run, where an idle instance gets no CPU); each call runs the checks
@@ -114,6 +117,7 @@ func Load(getenv func(string) string) (Config, error) {
 		SandboxTTL:         time.Duration(integer("SANDBOX_TTL_MINUTES", 120, 5, 24*60)) * time.Minute,
 		SandboxLimit:       integer("SANDBOX_LIMIT_PER_HOUR", 6, 1, 100000),
 		RetentionDays:      integer("RETENTION_DAYS", 90, 1, 3650),
+		StatusCache:        time.Duration(integer("STATUS_CACHE_SECONDS", 10, 0, 300)) * time.Second,
 		Schedule:           get("SCHEDULE", "loop"),
 		TickCaller:         get("TICK_CALLER", ""),
 		TickSlack:          time.Duration(integer("TICK_SLACK_SECONDS", 60, 0, 600)) * time.Second,
