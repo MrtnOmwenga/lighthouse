@@ -21,6 +21,8 @@ locals {
       GITHUB_CLIENT_ID       = var.github_client_id
       OWNER_GITHUB_ID        = tostring(var.owner_github_id)
       SCHEDULE               = "external"
+      CONFIRM_SECONDS        = "15"   # a failed check is re-checked 15 s later, so an outage is confirmed within a minute
+      WARM_THRESHOLD_MS      = "1000" # a slower answer is a demo waking up: recorded apart, then checked again
       TICK_CALLER            = google_service_account.scheduler.email
       DATABASE_URL           = local.lighthouse_db
       EDGE_SECRET            = random_password.edge.result

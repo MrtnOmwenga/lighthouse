@@ -152,7 +152,10 @@ least-privileged role; `lighthouse serve` runs the server, scheduler and houseke
 `SCHEDULE=external`, calls to `POST /internal/tick` drive the checks instead, for platforms that
 freeze idle instances; each call checks everything due, a monitor due within `TICK_SLACK_SECONDS`
 counts as due so a call that arrives a little early doesn't skip it, and a sandbox's simulated
-monitors are checked as its console reads data).
+monitors are checked as its console reads data). `CONFIRM_SECONDS` re-checks an HTTP monitor that soon
+after a result that starts to change its state, so an outage is confirmed within a minute, and
+`WARM_THRESHOLD_MS` records a slower passing answer as a sleeping service waking up and checks
+again, so response times describe the service and not its start-up.
 
 ## Design
 

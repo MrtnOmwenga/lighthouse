@@ -12,7 +12,7 @@ type Uptime struct {
 	Checks24h, OK24h int
 	Checks7d, OK7d   int
 	Checks90d, OK90d int
-	P50, P95         *float64 // milliseconds, passing checks in the last 24 hours
+	P50, P95         *float64 // milliseconds, passing checks in the last 24 hours, warm-ups left out
 }
 
 func UptimeStats(ctx context.Context, tx pgx.Tx, monitorIDs []string, now time.Time) (map[string]Uptime, error) {
@@ -23,8 +23,8 @@ func UptimeStats(ctx context.Context, tx pgx.Tx, monitorIDs []string, now time.T
 			count(*) FILTER (WHERE ok AND at > $2::timestamptz - interval '7 days'),
 			count(*),
 			count(*) FILTER (WHERE ok),
-			percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ok AND at > $2::timestamptz - interval '24 hours'),
-			percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ok AND at > $2::timestamptz - interval '24 hours')
+			percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ok AND NOT warmup AND at > $2::timestamptz - interval '24 hours'),
+			percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ok AND NOT warmup AND at > $2::timestamptz - interval '24 hours')
 		FROM checks WHERE monitor_id = ANY($1::uuid[]) AND at > $2::timestamptz - interval '90 days' AND at <= $2
 		GROUP BY monitor_id`, monitorIDs, now)
 	if err != nil {
@@ -75,7 +75,7 @@ type Point struct {
 // are absent.
 func LatencySeries(ctx context.Context, tx pgx.Tx, monitorIDs []string, window, bucket time.Duration, now time.Time) (map[string][]Point, error) {
 	rows, err := tx.Query(ctx, `SELECT monitor_id, date_bin($3::interval, at, $4::timestamptz - $2::interval) AS b,
-			avg(latency_ms) FILTER (WHERE ok)::float8, count(*) FILTER (WHERE NOT ok)
+			avg(latency_ms) FILTER (WHERE ok AND NOT warmup)::float8, count(*) FILTER (WHERE NOT ok)
 		FROM checks WHERE monitor_id = ANY($1::uuid[]) AND at > $4::timestamptz - $2::interval AND at <= $4
 		GROUP BY 1, 2 ORDER BY 1, 2`, monitorIDs, window, bucket, now)
 	if err != nil {

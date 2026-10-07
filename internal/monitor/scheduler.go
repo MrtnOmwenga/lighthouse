@@ -27,6 +27,16 @@ type Scheduler struct {
 	// interval). Zero for Run, which looks every second; set it when rounds are started from
 	// outside at fixed times, where a monitor a moment short of due would wait a whole period.
 	Slack time.Duration
+	// Confirm, when above zero, re-checks an HTTP monitor this long after a result that starts to
+	// change its state (a failure while it is up, a success while it is down), and again until
+	// the state settles or a threshold is reached. Without it, three failures in a row take three
+	// intervals to see; with it, an outage becomes an incident about a minute after it is first
+	// noticed.
+	Confirm time.Duration
+	// Warm, when above zero, treats a passing HTTP check slower than this as having woken a
+	// sleeping service: it is recorded as a warm-up and the monitor is checked again at once, so
+	// response-time figures describe the service, not its start-up.
+	Warm time.Duration
 	// Notify, if set, hears about incidents opened or resolved automatically, after the change
 	// is committed. It runs on the checking worker, so it should be quick or time-limited.
 	Notify func(ctx context.Context, c Change)
@@ -205,7 +215,8 @@ func (s *Scheduler) start(ctx context.Context, due []store.Due, sem chan struct{
 }
 
 // Check claims one monitor, probes it outside any transaction (a probe can take up to 30 s), then
-// records the result and applies any state change in one transaction.
+// records the result and applies any state change in one transaction. A slow first answer and a
+// state that starts to change each lead to further probes at once (see Warm and Confirm).
 func (s *Scheduler) Check(ctx context.Context, tenantID, monitorID string) error {
 	var m store.Monitor
 	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) error {
@@ -220,17 +231,54 @@ func (s *Scheduler) Check(ctx context.Context, tenantID, monitorID string) error
 		return fmt.Errorf("claim: %w", err)
 	}
 
+	save := func(r Result, warmup bool) (store.Monitor, bool, error) {
+		var change *Change
+		var after store.Monitor
+		var found bool
+		err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
+			change, after, found, err = record(ctx, tx, tenantID, monitorID, r, time.Now(), warmup)
+			return err
+		})
+		if err == nil && change != nil && s.Notify != nil {
+			s.Notify(ctx, *change)
+		}
+		return after, found, err
+	}
+
 	result := s.probe(ctx, m)
-	at := time.Now()
-	var change *Change
-	err = store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
-		change, err = record(ctx, tx, tenantID, monitorID, result, at)
-		return err
-	})
-	if err == nil && change != nil && s.Notify != nil {
-		s.Notify(ctx, *change)
+	if s.Warm > 0 && m.Kind == "http" && result.OK && result.Latency > s.Warm {
+		if _, found, err := save(result, true); err != nil || !found {
+			return err
+		}
+		result = s.probe(ctx, m)
+	}
+	after, found, err := save(result, false)
+
+	// Settle a state that has started to change, instead of leaving it for the next rounds.
+	for i := 0; err == nil && found && s.Confirm > 0 && m.Kind == "http" && unsettled(after) && i < maxConfirmations; i++ {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(s.Confirm):
+		}
+		after, found, err = save(s.probe(ctx, m), false)
 	}
 	return err
+}
+
+// maxConfirmations bounds the re-checks of one round, whatever the thresholds.
+const maxConfirmations = 5
+
+// unsettled reports whether a monitor is part-way to changing state: failing but not yet down, or
+// recovering but not yet up.
+func unsettled(m store.Monitor) bool {
+	if m.Paused {
+		return false
+	}
+	if m.Health == string(Down) {
+		return m.ConsecutiveSuccess > 0
+	}
+	return m.ConsecutiveFailures > 0
 }
 
 func (s *Scheduler) probe(ctx context.Context, m store.Monitor) Result {
@@ -255,15 +303,15 @@ func (s *Scheduler) probe(ctx context.Context, m store.Monitor) Result {
 // record stores a check and folds it into the monitor's state, opening or resolving its automatic
 // incident, and reports that change. The monitor row is locked, so two results for one monitor
 // can't interleave.
-func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result, at time.Time) (*Change, error) {
+func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result, at time.Time, warmup bool) (*Change, store.Monitor, bool, error) {
 	m, err := store.LockMonitor(ctx, tx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, nil // deleted while the probe ran
+		return nil, m, false, nil // deleted while the probe ran
 	}
 	if err != nil {
-		return nil, err
+		return nil, m, false, err
 	}
-	c := store.Check{MonitorID: m.ID, At: at, OK: r.OK, LatencyMS: int(r.Latency.Milliseconds()), TLSExpiresAt: r.TLSExpiresAt}
+	c := store.Check{MonitorID: m.ID, At: at, OK: r.OK, LatencyMS: int(r.Latency.Milliseconds()), TLSExpiresAt: r.TLSExpiresAt, Warmup: warmup}
 	if r.StatusCode != 0 {
 		c.StatusCode = &r.StatusCode
 	}
@@ -272,7 +320,7 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 		c.Failure = &f
 	}
 	if _, err := store.InsertCheck(ctx, tx, tenantID, c); err != nil {
-		return nil, fmt.Errorf("insert check: %w", err)
+		return nil, m, false, fmt.Errorf("insert check: %w", err)
 	}
 
 	next, transition := Next(
@@ -289,13 +337,13 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 			MonitorID: &m.ID, Title: m.Name + " is down", Severity: "high", Automatic: true, Public: m.Public, StartedAt: at,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("open incident: %w", err)
+			return nil, m, false, fmt.Errorf("open incident: %w", err)
 		}
 		if _, err := store.AddEvent(ctx, tx, tenantID, store.Event{
 			IncidentID: inc.ID, At: at, Kind: "opened", Public: true, Author: "Lighthouse",
 			Message: fmt.Sprintf("%d checks in a row failed (%s).", next.Failures, r.Failure),
 		}); err != nil {
-			return nil, err
+			return nil, m, false, err
 		}
 		m.OpenIncidentID = &inc.ID
 		change = &Change{TenantID: tenantID, Opened: true, IncidentID: inc.ID, Title: inc.Title, Monitor: m.Name,
@@ -304,7 +352,7 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 		if m.OpenIncidentID != nil {
 			inc, resolved, err := resolve(ctx, tx, tenantID, *m.OpenIncidentID, next.Successes, at)
 			if err != nil {
-				return nil, err
+				return nil, m, false, err
 			}
 			if resolved {
 				change = &Change{TenantID: tenantID, IncidentID: inc.ID, Title: inc.Title, Monitor: m.Name,
@@ -313,7 +361,7 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 		}
 		m.OpenIncidentID = nil
 	}
-	return change, store.SaveMonitorState(ctx, tx, m)
+	return change, m, true, store.SaveMonitorState(ctx, tx, m)
 }
 
 // resolve closes an automatic incident when its monitor recovers, unless someone already resolved

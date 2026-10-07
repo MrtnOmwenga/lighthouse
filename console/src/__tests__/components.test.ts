@@ -24,7 +24,7 @@ describe('ModeSwitch', () => {
 
 describe('Sparkline', () => {
   const check = (id: number, ok: boolean, latencyMs: number): Check =>
-    ({ id, monitorId: 'm', at: '', ok, statusCode: ok ? 200 : 503, latencyMs, failure: ok ? null : 'status', tlsExpiresAt: null });
+    ({ id, monitorId: 'm', at: '', ok, statusCode: ok ? 200 : 503, latencyMs, failure: ok ? null : 'status', tlsExpiresAt: null, warmup: false });
 
   it('draws passing checks as a line and failures as marks, oldest first', () => {
     // The API returns checks newest first.
