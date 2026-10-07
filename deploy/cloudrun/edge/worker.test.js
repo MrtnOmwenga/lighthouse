@@ -1,4 +1,4 @@
-// Run with: node --test deploy/cloudrun/edge/
+// Run with: node --test deploy/cloudrun/edge/worker.test.js
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import worker from "./worker.js";
