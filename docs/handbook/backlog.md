@@ -21,8 +21,8 @@ until the daily summaries of item 36.
 | 3 | **A finished console** | 52, 53, 56, 58, 59, 35, 41, 54, 57 | Live (#22) |
 | 4 | **A safer pipeline** | 1, 2, 3, 4, 5, 6, 7, 9, 37 | Live (#26); the same pipeline changes for RBAC-API and GhostChat come with their reviews |
 | 5 | **Security and sign-in** | 38, 39, 40, 42, 17, 25 (16 moves to the demos' own reviews; 26 goes with Infisical in phase 8) | Live (#27, #28, #29). Not built: the daily digest of unusual log entries (part of 42) |
-| 6 | **Better monitoring** | 33, 32 (replaces 11), 36, 10, 34, 13 | Live (#31, #32; 13 with #30) except: the Grafana dashboard and its two alerts wait on the service account's role and a recipient address; 36 (daily summaries) not built yet |
-| 7 | **Analytics for the job search** | 43, 44, 45, 46, 51 | |
+| 6 | **Better monitoring** | 33, 32 (replaces 11), 36, 10, 34, 13 | Live (#31, #32; 13 with #30), with the Grafana dashboard and its two alerts applied. Not built yet: 36 (daily summaries) |
+| 7 | **Analytics for the job search** | 43, 44, 45, 46, 51 | Live (#33): 44, 45, and 43 (a link generator per tracker row, outside this repository). 46 decided against for now (the email link is counted instead). 51 waits for a few weeks of clean data |
 | 8 | **Resilience and operations** | 12, 19, 20, 8, 22, 18, 14, 15, 21 | 15 live (#30: secrets kept in Infisical, read by Terraform without entering its state), with part of 26 |
 | Later | Separate projects or optional | 23, 24, 31, 47, 55 | |
 
