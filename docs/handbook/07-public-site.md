@@ -14,7 +14,10 @@ sources:
   - internal/web/server.go
   - deploy/site/site.yaml
   - Dockerfile
-verified: 2026-10-06
+  - internal/web/statuscache.go
+  - internal/web/static/status.js
+  - deploy/cloudrun/edge/worker.js
+verified: 2026-10-07
 ---
 
 # The public site
@@ -73,8 +76,10 @@ the public status (`status.Build`) and joins the two (`cards` in `internal/web/s
 project's card then shows "● Live · 99.98% uptime" or "● Down". So the portfolio's claims about
 its projects are measurements, not text someone typed.
 
-If the status can't be built (the database is unreachable), the portfolio pages **still render**,
-without the figures (`statusOrEmpty`). The reading matter doesn't depend on the database.
+The public status is built once and shared by every page for a few seconds (`statuscache.go`),
+and concurrent requests share one build. If it can't be rebuilt (the database is unreachable),
+the last one built is used; with none at all, the portfolio pages **still render**, without the
+figures. The reading matter doesn't depend on the database.
 
 ## What does the status page show, and how is it worked out?
 
@@ -96,7 +101,13 @@ Two details:
 - **A private incident looks exactly like a missing one** on the public incident page: same 404,
   same words.
 
-The chart is an SVG drawn on the server, so the status page needs no JavaScript at all. The same
+When the status can't be rebuilt, the page shows the last one that was, with a line saying its
+figures couldn't be refreshed and when they were measured. It answers 503 only if nothing has
+been built since the instance started.
+
+The chart is an SVG drawn on the server, so the status page works without JavaScript. With it, a
+small script refreshes the figures in place every minute while the tab is visible; without it,
+the page reloads itself. The same
 data is available as JSON at `/api/status`, readable from any site.
 
 ## What happens when a visitor opens a demo?
@@ -119,17 +130,49 @@ request to the demo, not a thousand.
 
 ## How is caching used?
 
+In three layers.
+
+**Browsers** are told how long they may reuse a response:
+
 | What | Browser may reuse it for |
 |---|---|
 | Front page, projects | 30 seconds |
 | A story | 60 seconds |
 | Status page and `/api/status` | 15 seconds |
 | About | 5 minutes |
-| Stylesheet, scripts, fonts | 1 hour (and at the edge) |
+| Stylesheet and scripts, by fingerprinted address; fonts | 1 year |
 | Portrait, CV | 1 day |
 | "Is it ready?" | Never |
 
-Pages with live figures get short lifetimes; nothing personalised is ever marked cacheable.
+**The edge** keeps a copy of each public page: served for a minute without waking the app, and
+served as a marked "saved copy" for up to a day when the site isn't responding (see the Cloud Run
+and edge page).
+
+**The server** builds the public status once every few seconds, not once per page.
+
+Pages reference their stylesheet and scripts with a fingerprint of the contents
+(`/static/style.css?v=349ae5…`, the `asset` template function), so they can be kept for a year and
+a new version is still picked up the moment it ships. Nothing personalised is ever marked
+cacheable.
+
+## How are the pages worded?
+
+Headlines say what a thing is; the newspaper-style teaser sits in the small line above. The front
+page leads with the role and its scope, then six delivered outcomes and four working habits,
+ahead of any list of tools.
+
+That order follows an analysis of about 15,000 remote job postings: communication, customers,
+shipping, leading people, testing and ownership each appear in more postings than any technology.
+The earlier wording led with a stack list and headlines like "Exposed: inside the intelligence
+agency's briefing room", which were memorable and didn't say what the project was; in the first
+week most visitors left from the front page.
+
+## What does a shared link look like?
+
+Every public page carries Open Graph tags (a title, a description, a 1200×630 preview image) and
+its canonical address, so a link pasted into LinkedIn, Slack or a chat shows a card. There is a
+`robots.txt` (the console, the API and the launch pages, which wake demos, are excluded) and a
+sitemap.
 
 ## What else is worth knowing?
 
@@ -142,20 +185,14 @@ Pages with live figures get short lifetimes; nothing personalised is ever marked
 
 ## Known gaps
 
-- **Shared links have no preview.** There are no Open Graph tags, so a link pasted into LinkedIn,
-  Slack or a chat shows a bare address with no title card or image. There is also no `robots.txt`,
-  sitemap or canonical address for search engines.
-- **Every page view queries the database.** The figures are recomputed from raw check rows for
-  each request not served from a browser's own cache; the edge caches only static files. A visit
-  wakes the database if it was asleep.
-- **The status page reloads itself every minute** by a `refresh` tag, which reloads everything and
-  inflates the view count (see the analytics page).
-- **The status page fails without the database** (a 503 page), exactly when people look at it.
-  The portfolio pages degrade gracefully; the status page doesn't keep a last-known copy.
 - **Changing a word needs a release.** Content ships in the image, which keeps it reviewed and
   versioned, and means a typo fix runs the whole pipeline.
+- **One preview image for every page.** Each project's link shows the same card.
+- **A saved copy can be up to a day old.** It says so at the top of the page.
 - **Readiness answers are remembered per instance,** in memory.
 - **No dark colour scheme.**
+- **Whether the new wording works isn't measured yet.** It needs a few weeks of clean numbers:
+  what share of engaged readers go on from the front page to a project or a demo.
 
 ## Questions and answers
 
@@ -174,7 +211,8 @@ The project names a monitor's slug; the page joins the content with the public s
 that monitor's checks.
 
 **What happens to the front page if the database is down?**
-It renders without live figures. Only the status page needs the database.
+It renders, with the last figures built or none. The status page shows the last status built and
+says so. If the whole app is down, the edge serves its last copy of each page, marked as saved.
 
 **Why does uptime round down?**
 So an imperfect record never displays as 100%. Rounding to nearest would turn 99.996% into

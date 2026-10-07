@@ -9,7 +9,10 @@ sources:
   - internal/web/analytics.go
   - internal/web/static/a.js
   - internal/web/templates/privacy.html
-verified: 2026-10-06
+  - internal/web/static/status.js
+  - internal/alert/alert.go
+  - internal/store/migrations/00006_more_events.sql
+verified: 2026-10-07
 ---
 
 # Privacy-friendly analytics
@@ -45,7 +48,11 @@ One row per page view (`page_views`, in `00002_analytics.sql`):
 | A campaign tag, if the link had one | `toggl` | |
 | Engaged seconds | 95 | |
 
-Plus events on a view: a demo became ready, a demo was opened, the introduction was skipped.
+Plus events on a view, each only as "it happened", at most once per view: a demo became ready, a
+demo was opened, the introduction was skipped, the CV was opened, a link to GitHub or LinkedIn was
+followed, an email was started, and a project's story was read to its end (the foot of the page
+came into view at least ten seconds after arriving). The script looks only at the kind of link
+that was clicked.
 
 Everything is validated against a fixed shape before it is stored (a known page, a short tag of
 letters and digits, a host name), and the database repeats those checks, so free text from a
@@ -83,6 +90,11 @@ compute the hashes at all, and once the salt is deleted, nobody can.
 - **Bots**, recognised by their browser string (crawlers, link previewers, monitoring tools,
   Lighthouse's own probes).
 - **The signed-in owner.**
+- **Any browser the owner has marked as his.** A switch on the console's Readers screen sets a
+  year-long cookie in that browser, and the server skips any request carrying it. Without this,
+  his visits from a phone or a changing address looked like a stream of new visitors, which
+  swamps a small site's numbers. It is the one cookie the analytics involve, set only in the
+  owner's browser, when he chooses it.
 
 The collection endpoints answer the same way whether or not a visit was counted, so they reveal
 nothing about why one was skipped.
@@ -97,6 +109,18 @@ since the previous message, never more than 20 seconds per message and never mor
 total. The browser doesn't report a duration, so a page left open in a background tab accrues
 nothing, and nobody can inflate their reading time by sending a large number.
 
+## What counts as a reader?
+
+A view is recorded the moment a page loads, so a glance, a mis-click and a scanner driving a real
+browser all look the same: one view, no reading. The report therefore counts **engaged readers**
+apart from all visitors: those who read a page for at least five seconds, or did something (opened
+a demo, the CV, a link). A demo becoming ready happens by itself and doesn't count.
+
+The first week's data showed why: 51 of 61 visitor-days were one page and zero seconds, and 342 of
+424 views were one open status-page tab reloading itself every minute. The status page now
+refreshes its figures in place (`status.js` fetches the page and swaps its main part, only while
+the tab is visible), so an open tab is one view.
+
 ## How do campaign tags work?
 
 A link such as `https://martinomwenga.com/?ref=toggl` carries a tag. On arrival the script reads
@@ -108,6 +132,11 @@ pages, total reading time, **which pages they went on to read**, and how many de
 (`RefStats`). It works by taking each visitor who arrived with the tag and gathering all their
 views from that day, through the pseudonym. So one tagged link per job application shows what that
 company's reader did, with no personal data involved.
+
+The first time each day a tagged link is opened, Lighthouse emails the owner: the tag, the page it
+landed on, and the kind of device (`TagOpened` in `internal/alert`). The job-hunt side generates
+one tag per application, so "did they look?" becomes a notification. The tag names the
+application, never the person.
 
 ## What can the public see?
 
@@ -139,15 +168,6 @@ regime requires.
 
 ## Known gaps
 
-- **The status page's auto-refresh is counted as new views.** The page reloads itself every
-  minute, and each reload records a view. In the first week live, one browser left open on it
-  produced 264 views in a day; 342 of the 424 recorded views were `/status`, from four visitors.
-- **The owner's own visits are counted unless signed in.** Signed out, on a phone, or on a network
-  whose address changes, the owner looks like a stream of new visitors. Most of the first week's
-  traffic clusters in the owner's working hours.
-- **A view is counted the instant a page loads,** so a real person who glances and leaves, and a
-  scanner driving a real browser, look the same: one view, zero seconds. 51 of the first week's 61
-  visitor-days were exactly that.
 - **Visitors are undercounted.** Everyone sharing an IP address and browser version (an office, a
   mobile carrier's shared addresses) counts as one person. A person on two networks counts as two.
 - **Privacy-minded browsers are invisible.** Brave sends Global Privacy Control by default, and
@@ -155,12 +175,16 @@ regime requires.
   audience.
 - **No returning visitors.** By design, someone who comes back tomorrow is new. "The same reader
   came back three times this week" can't be known. A tagged link still shows visits on each day.
-- **Three kinds of event only.** CV downloads, clicks out to GitHub or LinkedIn, and reading a
-  story to the end aren't recorded.
-- **Bots are recognised by name only,** so a bot pretending to be a browser is counted.
+- **A tag says which link, not who.** If an application's link is forwarded, the colleague's visit
+  appears under the same tag only if they open the tagged address; once the page has loaded, the
+  tag is gone from the address bar.
+- **Bots are recognised by name only,** so a bot pretending to be a browser is counted as a
+  visitor (though rarely as an engaged reader).
 - **It needs JavaScript.** The pages work without it; the counting doesn't.
-- **Every counted view writes to the database,** which wakes it if it was asleep.
-- **Nothing tells the owner when something interesting happens;** the report has to be opened.
+- **Every counted view writes to the database,** which wakes it if it was asleep, even when the
+  page itself came from the edge's copy.
+- **Whether the front page leads readers on to the projects isn't known yet.** The numbers are
+  only now clean enough to ask; it needs a few weeks of them.
 
 ## Questions and answers
 
@@ -187,6 +211,12 @@ forwarded the page to would be counted under the same tag.
 **Why hide counts below five?**
 With one or two readers, a public number could confirm that a specific person had visited ("I
 sent it to them yesterday and the count went from 0 to 1").
+
+**Does the site set any cookie at all?**
+Not for reading it. Signing in to the console or starting a sandbox sets a session cookie, and the
+owner can mark his own browsers with one so they aren't counted. For a while Google's front end
+also set one on every visitor, by a setting left on by mistake; it was found by looking at the
+live site's response headers, and removed.
 
 **What would have to change to learn more about visitors?**
 Anything beyond this (recognising returning visitors, identifying organisations from addresses)

@@ -1,7 +1,7 @@
 ---
 title: "Shipping the apps: Cloud Run and the edge"
 project: lighthouse (hosts Lighthouse, Redacted and GhostChat)
-topics: [cloud-run, cloudflare-workers, terraform, scale-to-zero, secrets, least-privilege, neon, free-tier]
+topics: [cloud-run, cloudflare-workers, terraform, scale-to-zero, secrets, infisical, backups, restore-testing, edge-caching, least-privilege, neon, free-tier]
 sources:
   - deploy/cloudrun/services.tf
   - deploy/cloudrun/edge.tf
@@ -10,8 +10,13 @@ sources:
   - deploy/cloudrun/secrets.tf
   - deploy/cloudrun/databases.tf
   - deploy/cloudrun/registry.tf
+  - deploy/cloudrun/infisical.tf
+  - deploy/cloudrun/backups.tf
+  - deploy/cloudrun/backup/backup.sh
+  - deploy/cloudrun/grafana.tf
+  - deploy/cloudrun/alerts.tf
   - internal/web/server.go
-verified: 2026-10-05
+verified: 2026-10-07
 ---
 
 # Shipping the apps: Cloud Run and the edge
@@ -59,7 +64,8 @@ Worker, three Cloud Run services.
 
 ## What does the Worker do?
 
-About thirty lines (`deploy/cloudrun/edge/worker.js`):
+About a hundred lines (`deploy/cloudrun/edge/worker.js`), with its own tests
+(`worker.test.js`):
 
 1. **Routes by hostname.** `ORIGINS` is a JSON map from hostname to the service's `*.run.app`
    address, filled in by Terraform from the services it created. Unknown hostname: 404.
@@ -69,10 +75,29 @@ About thirty lines (`deploy/cloudrun/edge/worker.js`):
    - `X-Client-IP`: the visitor's address, which Cloudflare knows (`CF-Connecting-IP`) and the
      origin otherwise wouldn't (it would only see Cloudflare);
    - `X-Forwarded-Host`: the hostname the visitor used;
-   - `X-Edge-Secret`: proof the request came through this Worker.
-4. **Caches static files** (scripts, styles, images, fonts) at the edge for an hour; everything
-   else goes to the origin every time. `redirect: "manual"` hands redirects back to the browser
-   instead of following them at the edge.
+   - `X-Edge-Secret`: proof the request came through this Worker, **sent only to Lighthouse**,
+     the one origin that checks it. A secret goes only where it is needed.
+4. **Keeps a copy of Lighthouse's public pages** (next section).
+5. **Caches static files** at the edge: for a year when the address carries a fingerprint of the
+   file's contents (`style.css?v=349ae5…`) or is a font, otherwise for an hour.
+   `redirect: "manual"` hands redirects back to the browser instead of following them at the edge.
+
+## What does the edge do with pages?
+
+For the public pages (front page, projects, stories, about, status, privacy, and `/api/status`),
+asked for anonymously:
+
+- **A copy less than a minute old is served as it is,** without contacting the origin. Most
+  visits never wake the app or its database.
+- **When the origin fails or can't be reached, the last copy is served** (kept up to a day), with
+  a line at the top of the page: "The site isn't responding right now. This is a copy saved at …".
+  A status page that silently showed yesterday's "all operational" would be worse than an error,
+  so the copy says what it is.
+
+What is never kept: any request carrying a session cookie, anything but a `GET`, any answer that
+isn't a 200 or that sets a cookie, the console, the rest of the API, and the demos. Counting
+visits isn't affected, because the page's script reports a visit to the API; a page load by itself
+never counted.
 
 ## Why a Worker, and not Cloud Run's own custom domains or a load balancer?
 
@@ -111,18 +136,24 @@ A rate limit caps how often one client may do something, so a single visitor or 
 exhaust the system. Each client needs an identity for that; here it is the visitor's IP address,
 which is why the Worker passes it on and why it mustn't be forgeable.
 
-Lighthouse has two (`internal/web/limiter.go`), both *token buckets*: each client has a bucket
-that holds a few tokens and refills at a steady rate; every action spends one; an empty bucket
-means "429 Too Many Requests".
+Lighthouse has two:
 
-| Limit | Allowance | Protects |
-|---|---|---|
-| New sandboxes | 6 an hour per address, at most 3 in a burst | Each sandbox creates a tenant with monitors and data; unlimited creation would fill the free database |
-| Writes to the API (anything that isn't a read) | 5 a second per address, bursts of 20 | Abuse of the console's API |
+| Limit | Allowance | Kept in | Protects |
+|---|---|---|---|
+| New sandboxes | 6 an hour per visitor | The database | Each sandbox creates a tenant with monitors and data; unlimited creation would fill the free database |
+| Writes to the API (anything that isn't a read) | 5 a second per address, bursts of 20 | The instance's memory | Abuse of the console's API |
 
-The buckets live in the instance's memory and idle ones are forgotten, so they reset when the
-container stops. The demos have their own: Redacted allows 300 requests a minute (10 for sign-in);
-GhostChat 300 per 15 minutes (10 for sign-in) and 20 messages per 10 seconds.
+- **The sandbox limit is counted in the database** (a small table reached only through one
+  function), so it survives the container sleeping and would be shared between instances. The
+  visitor is identified by a keyed hash of their address under a secret that changes daily, never
+  by the address itself.
+- **The write limit is a token bucket in memory** (`internal/web/limiter.go`): each client has a
+  bucket that holds a few tokens and refills at a steady rate; every action spends one; an empty
+  bucket means "429 Too Many Requests". It covers a window of seconds, so losing it on a restart
+  costs nothing.
+
+The demos have their own: Redacted allows 300 requests a minute (10 for sign-in); GhostChat 300
+per 15 minutes (10 for sign-in) and 20 messages per 10 seconds.
 
 ## What is a Cloud Run service here?
 
@@ -159,11 +190,31 @@ Two kinds of environment variable, both declared in `services.tf`:
   `lighthouse-db-app`", and Cloud Run fetches the value from Secret Manager when a container
   starts. The value is never in the service's definition.
 
-Secret Manager holds exactly six secrets, its free allowance: the owner and app database passwords
-for Lighthouse and Redacted, the GitHub OAuth client secret, and GhostChat's MongoDB connection
-string. Three lower-stakes values (the demos' token-signing keys and the edge secret) are plain
-environment variables instead: only someone who can read a service's settings can see them, and
-anyone with that access can already deploy code that reads the service's secrets.
+Secret Manager holds eight secrets, two more than its free allowance (about $0.12 a month): the
+owner and app database passwords for Lighthouse and Redacted, the GitHub OAuth client secret,
+GhostChat's MongoDB connection string, the mailbox password for incident emails, and the token for
+reporting metrics. Three lower-stakes values (the demos' token-signing keys and the edge secret)
+are plain environment variables instead: only someone who can read a service's settings can see
+them, and anyone with that access can already deploy code that reads the service's secrets.
+
+## Where are secrets kept and changed?
+
+In two places, by where they come from:
+
+- **Generated by Terraform:** the database passwords. Nobody ever types them; they are in
+  Terraform's state.
+- **Obtained by a person:** the OAuth client secret, the MongoDB address, the mailbox password,
+  the metrics token. These are kept in **Infisical**, a secrets manager: one place to change them,
+  with a history and access control (`infisical.tf`).
+
+Terraform signs in to Infisical as a machine identity and reads those values as *ephemeral*
+resources, which exist only while a plan or apply runs. It passes them to Secret Manager through
+*write-only* arguments. So they are in neither Terraform's state nor its plans. Each secret's
+version number in Infisical is read as ordinary data, so changing a value there and applying
+copies the new one across.
+
+The services read Secret Manager only. If Infisical is unreachable, nothing that is running
+notices; only the next `terraform apply` would.
 
 ## Who is allowed to do what?
 
@@ -191,6 +242,31 @@ even though they share a project.
   migration jobs. GhostChat's Atlas user can read and write the `ghostchat` database and nothing
   else.
 
+## How is the data backed up, and how is that known to work?
+
+Neon's free plan keeps six hours of history and Atlas's free tier keeps none, so there are two
+jobs (`backups.tf`, `backup/backup.sh`), both Cloud Run jobs started by Cloud Scheduler:
+
+- **`backup`, every night:** `pg_dump` of both PostgreSQL databases and `mongodump` of
+  GhostChat's, into a Cloud Storage bucket that keeps every version of an object and deletes
+  anything older than 30 days.
+- **`restore-test`, every week:** fetches the latest backups, starts a scratch PostgreSQL inside
+  its own container, restores both dumps, and checks what came back: there are tables,
+  Lighthouse has its monitors, and its newest check is at most 26 hours old. It refuses a backup
+  more than a day old, and records how long the restore took.
+
+**The objective:** lose at most 24 hours of data. Restoring both databases takes seconds at this
+size.
+
+Either job failing sends an email. They run in the stock `postgres:17-alpine` image, pinned by
+digest, with the script passed as an argument, as their own service account, which can read the
+three database credentials and use that one bucket.
+
+**Why the restore test matters:** on its first run it failed, correctly. The backup job had
+reported success three times while storing seven bytes per database: the image's built-in
+download tool cuts a binary upload at its first zero byte, and a PostgreSQL dump has one in its
+header. A backup that has never been restored isn't known to work.
+
 ## Why is everything sized the way it is?
 
 Every setting follows from a free-tier limit:
@@ -199,10 +275,11 @@ Every setting follows from a free-tier limit:
 |---|---|
 | Cloud Run: 180,000 vCPU-seconds, 360,000 GiB-seconds, 2M requests a month | Scale to zero, CPU only during requests, one instance each |
 | Neon: 100 compute-hours a month *per project* | A project per app; the scheduler ticks every 15 minutes so the databases sleep most of the time |
-| Secret Manager: 6 secret versions | Exactly six |
+| Secret Manager: 6 secret versions | Eight: two over, about $0.12 a month, for incident emails and metrics |
 | Artifact Registry: 0.5 GB | Only amd64 is copied; the two newest versions of each image are kept |
-| Google egress: 1 GB a month | Static files cached at the edge |
-| Cloud Scheduler: 3 jobs | One |
+| Google egress: 1 GB a month | Static files and public pages cached at the edge |
+| Cloud Scheduler: 3 jobs | Three: the tick, the nightly backup, the weekly restore test |
+| Cloud Storage: 5 GB in three US regions | Backups and Terraform's state, in `us-east1` |
 
 ## How would redundancy be added?
 
@@ -228,27 +305,33 @@ Redundancy means no single failure takes the system down. It is added in layers,
    short outage is invisible to readers.
 
 Each layer costs money and complexity, so it is added when an outage would cost more than the
-layer does. Here, none is in place: one instance, one region, free database plans.
+layer does. Here, layers 2 and 5 are in place (without the percentage split, which needs more
+traffic than this site has to mean anything), plus nightly backups; one instance, one region and
+free database plans remain.
 
 ## Known gaps
 
 - **The demos can be reached directly.** Only Lighthouse checks the edge secret; Redacted and
   GhostChat answer on their `*.run.app` addresses, bypassing Cloudflare (and its client-IP header,
   so their rate limits can be dodged there).
-- **One edge secret, sent to all three origins.** The Worker adds Lighthouse's secret to requests
-  for the demos too. They ignore it, but a secret should only go where it's needed.
 - **One instance, no redundancy.** A crash or a deploy means a cold start for the next visitor; a
-  burst beyond 250 concurrent requests is queued briefly, then refused. Fine for a portfolio, not for a business.
-- **Cold starts are visible:** about 2 s for the first visitor after a quiet spell.
-- **The edge cache is per Cloudflare location and lasts an hour,** so on a low-traffic site many
-  requests for static files still reach the origin.
-- **In-memory state resets** whenever a container stops: rate-limit counters and small caches
-  start empty.
-- **Terraform's state file contains every secret value** (generated passwords included). It is in
-  a private bucket; it should be treated as a secret itself.
+  burst beyond 250 concurrent requests is queued briefly, then refused. Fine for a portfolio, not
+  for a business. Of the redundancy layers above, two are in place: safe releases (a tested
+  candidate and automatic rollback, on the pipeline page) and the edge as a cushion.
+- **Cold starts are visible** to whoever arrives when the edge's copy is more than a minute old:
+  about 2 s.
+- **MongoDB's backup gets a weaker test than PostgreSQL's.** There is no MongoDB server in the
+  test container, so the archive is decompressed end to end, not restored.
+- **A backup job that never starts sends no email.** The alert matches the failure lines the
+  script prints; the weekly restore test would catch it, by refusing a stale backup.
+- **Database passwords generated by Terraform are in its state.** The state is in a private,
+  versioned bucket and should be treated as a secret.
+- **The write limit resets** whenever a container stops (it covers seconds, so little is lost).
 - **GhostChat's database accepts connections from any address,** because Cloud Run has no fixed
   address on the free tier; the password and TLS are the protection.
-- **Visitors far from `us-east4` pay for the distance** on every uncached request.
+- **Visitors far from `us-east4` pay for the distance** on every request the edge can't answer.
+- **A saved copy can be a day old.** It says so on the page; a reader who ignores the line could
+  still take stale figures for current ones.
 
 ## Questions and answers
 
@@ -256,6 +339,14 @@ layer does. Here, none is in place: one instance, one region, free database plan
 Cloudflare answers the TLS handshake immediately; the Worker forwards the request; Cloud Run starts
 a container (the Go binary starts in well under a second), which wakes the Neon database with its
 first query; the page comes back in about two seconds. The next requests take under one.
+If the page is a public one and the origin fails to start at all, the edge serves its last copy,
+marked as saved.
+
+**Does anything in this path set a cookie on a visitor?**
+Not for reading the site. It did, by accident: Cloud Run's "session affinity" was switched on,
+which makes Google's front end set a 30-day cookie on every visitor. With one instance there is
+nothing to stick to, so it is off. It was found by looking at the live site's response headers,
+not by reading the configuration.
 
 **Why can't someone just call the `run.app` address?**
 For Lighthouse they get a 404: the request lacks the edge secret. For the two demos they can,

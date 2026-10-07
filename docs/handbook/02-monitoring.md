@@ -12,7 +12,12 @@ sources:
   - internal/oidc/oidc.go
   - cmd/lighthouse/main.go
   - deploy/cloudrun/scheduler.tf
-verified: 2026-10-06
+  - internal/store/migrations/00003_due_slack.sql
+  - internal/store/migrations/00005_warmup.sql
+  - internal/metrics/metrics.go
+  - internal/alert/alert.go
+  - deploy/cloudrun/grafana.tf
+verified: 2026-10-07
 ---
 
 # Watching the apps: probes, the scheduler and incidents
@@ -42,7 +47,13 @@ Four steps, for every monitor that is due (`internal/monitor/scheduler.go`):
 4. record  store the check, update the health, open or resolve an incident: one transaction
 ```
 
-A bounded pool of workers (8 by default) runs steps 2 to 4 for several monitors at once.
+A bounded pool of workers (8 by default) runs steps 2 to 4 for several monitors at once. A round
+keeps listing due monitors until a batch holds nothing new, so it isn't limited to one batch, and
+each monitor is checked at most once per round.
+
+Two things can add probes to step 3 for an HTTP monitor (both below): a slow first answer is
+treated as the service waking up, and a result that starts to change the monitor's state is
+confirmed at once.
 
 ## What does a probe check?
 
@@ -173,6 +184,72 @@ Two modes (`SCHEDULE`, in `internal/config/config.go`):
   call runs one round (`externalTicker` in `cmd/lighthouse/main.go`), plus the hourly clean-up of
   old data when it's due.
 
+A clock that arrives from outside at fixed times brings three problems that a one-second loop
+doesn't have. Each was found on the live site and has its own answer.
+
+## Why would a fixed schedule skip every other round?
+
+A check moves a monitor's next one a full interval on from the moment it ran. The live monitors
+have a 900-second interval, and the scheduler calls every 900 seconds. A check that ran three
+seconds after one call was due again three seconds after the next call, so that call found it
+"not due yet" and skipped it. The monitors logged about 58 checks a day instead of 96.
+
+The answer is **slack**: a caller may treat a monitor as due slightly ahead of time, never by
+more than a tenth of the monitor's interval (`TICK_SLACK_SECONDS`, 60 on the live site). The
+condition is in the database function that lists due monitors and in the claim, so both agree.
+
+## How does a sandbox get checked between rounds?
+
+It doesn't wait for one. A sandbox's monitors are meant to be checked every ten seconds, and a
+round comes every 15 minutes. So when a console asks for data (it polls every few seconds while
+someone is looking), the server first runs that tenant's due **simulated** checks
+(`Scheduler.RunTenant`). A visitor watching their sandbox drives its schedule; a sandbox nobody
+is watching costs nothing. Simulated checks send no traffic and take no time, and a real HTTP
+monitor is never probed this way.
+
+## How soon is an outage noticed?
+
+Within one round, plus about a minute.
+
+Three failures in a row used to mean three rounds: 30 to 45 minutes. Now, when a result *starts*
+to change an HTTP monitor's state (a failure while it is up, a success while it is down), the
+monitor is checked again 15 seconds later, and again, until the state settles or a threshold is
+reached (`Confirm` in `scheduler.go`). So:
+
+- a real outage is confirmed and opened about half a minute after it is first seen;
+- a single failed answer is checked again and comes to nothing;
+- a state that isn't changing gets one check a round, as before.
+
+The thresholds still do their job of ignoring blips; they are no longer spread across rounds.
+The worst case is the wait for the next round: 15 minutes.
+
+## Why aren't the demos' response times three seconds?
+
+They were. The demos sleep when idle, and a check every 15 minutes always found them asleep, so
+the status page reported the time it takes a container to start (about 3.5 s) as the app's
+response time.
+
+A passing HTTP check slower than one second is now taken to have woken a sleeping service. It is
+recorded as a **warm-up**, and the monitor is checked again at once. Warm-ups count towards
+uptime (the service did answer) and are left out of the median, the 95th percentile and the
+chart.
+
+## Who watches Lighthouse?
+
+Something outside it. At the end of every round, Lighthouse sends a few numbers to Grafana Cloud
+(`internal/metrics`): how the round went, each monitor up or down, open incidents, and requests
+answered since the last round by status class. Grafana raises an alert when **no round has
+reported for 40 minutes**, which means two were missed: the scheduler stopped calling, Lighthouse
+can't start, or it can't reach its database. This pattern is called a dead man's switch: silence
+is the alarm.
+
+The numbers are pushed because nothing can scrape a container that sleeps. They are sent as plain
+text (InfluxDB line protocol), which Grafana Cloud's Prometheus accepts, so there are no new
+dependencies. A second alert fires on any server error.
+
+When one of the owner's public monitors goes down or recovers, Lighthouse also emails the owner
+(`internal/alert`).
+
 ## How does the tick endpoint know the caller is the scheduler?
 
 The same idea as the keyless deploys in [the pipeline page](01a-pipeline.md), with the roles
@@ -217,32 +294,21 @@ example at the end of each tick.
 
 ## Known gaps
 
-- **The sandbox doesn't work on the live deployment.** Sandbox monitors are meant to be checked
-  every 10 seconds, so a visitor who breaks a pretend site sees an incident within half a minute.
-  With the external schedule, checks only run on a tick, every 15 minutes, and one tick runs each
-  due monitor once. Verified on the live site on 2026-10-06: a sandbox's monitors were still
-  `unknown`, never checked, 45 seconds after one was set to `down`. An incident would take three
-  ticks. Fix: run a tenant's due checks when its console asks for data (the console polls every
-  five seconds while open), so an active visitor drives their own schedule.
-- **A new monitor isn't checked when it's created.** It is saved as due, but nothing runs it until
-  the next round: within a second in loop mode, up to 15 minutes on the live site. A mistyped
-  address is only discovered later. Fix: run the first check on save and show the result, and
-  offer a test before saving.
-- **Every other tick is missed.** The owner's monitors have a 900-second interval and the tick
-  comes every 900 seconds. A claim sets the next check to "now + 900 s", a few seconds after the
-  tick, so the following tick arrives a few seconds too early and skips it. The live monitors show
-  about 58 checks in 24 hours instead of 96. Fix: make the interval shorter than the tick, or
-  treat a monitor as due if it will be within the next few seconds.
-- **Outages are noticed slowly.** Three failures in a row at one check per 15 to 30 minutes is 45
-  to 90 minutes. The site's text says about 45.
-- **A round handles at most 32 due monitors** (four times the worker count). In loop mode the next
-  second picks up the rest; in external mode they wait for the next tick.
+- **An outage can go unseen for up to 15 minutes,** the gap between rounds. That is a cost of
+  running on a free database that sleeps: a round every minute would use up its monthly allowance.
 - **One vantage point.** Every probe leaves from one region. A network problem between there and a
   site is indistinguishable from the site being down; real monitors confirm from several places.
-- **Nothing watches Lighthouse.** It checks itself, but if it is down it can't record that. Fix: a
-  heartbeat to an outside service on each tick, which raises the alarm when the heartbeats stop.
-- **Probes wake sleeping demos,** so the recorded response times (about 3.4 s) are cold starts.
+- **Confirmation is quick, not independent.** The re-checks come from the same place seconds
+  apart, so a 45-second network fault on Lighthouse's side would open an incident.
+- **The warm-up rule is a guess from timing:** any passing check slower than a second is called a
+  wake-up. A service that is simply slow gets two probes a round and its slow first answer left
+  out of the figures.
+- **A sandbox is only checked while its console is open.** That is the design, and it means a
+  sandbox's history has gaps wherever the visitor looked away.
+- **Status figures are computed from raw checks on every build,** over a table that keeps 90
+  days. Fine at this size; daily summaries would be the next step.
 - **At-most-once checks:** a crash between claim and record skips that check.
+- **The outside alarm depends on one outside service** (Grafana Cloud's free plan) and on email.
 
 ## Questions and answers
 
@@ -256,7 +322,8 @@ instance finds nothing to claim.
 
 **Why three failures before an incident?**
 Networks blip. Opening an incident on one failed request would produce noise, and noise teaches
-people to ignore alerts. The threshold is a setting per monitor.
+people to ignore alerts. The threshold is a setting per monitor. The three failures are gathered
+within a minute (a failed check is confirmed at once), not over three rounds.
 
 **What does "pure function" buy you here?**
 The rules for opening and resolving incidents can be tested exhaustively, with no database and no

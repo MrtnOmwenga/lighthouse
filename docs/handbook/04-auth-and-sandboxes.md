@@ -9,8 +9,11 @@ sources:
   - internal/web/validate.go
   - internal/web/limiter.go
   - internal/config/config.go
+  - internal/web/security.go
+  - internal/store/migrations/00004_security.sql
+  - deploy/cloudrun/alerts.tf
   - internal/web/web_test.go
-verified: 2026-10-06
+verified: 2026-10-07
 ---
 
 # Auth and sandboxes
@@ -51,7 +54,7 @@ There are no accounts, passwords or sign-up in Lighthouse itself.
    **token**.
 2. It stores the token's **SHA-256 hash** in the `sessions` table, with the tenant, the role and
    an expiry time.
-3. It sends the token itself to the browser as a cookie named `lh_session`.
+3. It sends the token itself to the browser as a cookie named `__Host-lh_session`.
 
 On every later request, the middleware reads the cookie, hashes it, and looks the hash up
 (`lighthouse_session`, one of the four cross-tenant functions). If a session exists and hasn't
@@ -88,13 +91,22 @@ tokens. The session equivalent is a *sliding* expiry, extended on each use.)
 
 ## How is the cookie protected?
 
-Three flags, set where the cookie is created:
+Three flags and a name, set where the cookie is created:
 
-| Flag | Effect | Stops |
+| | Effect | Stops |
 |---|---|---|
 | `HttpOnly` | JavaScript on the page can't read the cookie | A script injected into the page stealing the session |
 | `Secure` | Sent only over HTTPS | Someone on the network reading it |
 | `SameSite=Lax` | Not sent on requests another site triggers (except a plain top-level link) | Most cross-site request forgery |
+| The `__Host-` prefix on its name | The browser accepts the cookie only from this exact host, over HTTPS, for the whole site | A page on a sibling address planting a session |
+
+The last one matters because the demos live on sibling addresses of the same parent domain
+(`redacted.martinomwenga.com`). Any page there may set a cookie for the whole domain, including
+one called `lh_session`. If a demo were compromised, it could plant an attacker's sandbox session
+in the owner's browser. A browser refuses a `__Host-` cookie that wasn't set by the exact host,
+and Lighthouse reads only the prefixed name, so a planted cookie is ignored
+(`TestSessionCookieIsHostBound`). Over plain HTTP, in local development, the bare name is used,
+because browsers refuse the prefix there.
 
 ## What stops another website acting as me?
 
@@ -125,7 +137,8 @@ With GitHub, using OAuth (`GitHubStart` and `GitHubCallback`):
 4. Lighthouse exchanges the code for a GitHub token (server to server, using the client secret),
    asks GitHub "who is this?", and compares the account's **numeric id** with the configured
    owner id.
-5. A match starts an owner session. Anyone else is told only the owner can sign in.
+5. A match starts an owner session. Anyone else is told only the owner can sign in, and the
+   attempt is recorded.
 
 Details worth knowing:
 
@@ -136,6 +149,27 @@ Details worth knowing:
 - **Production refuses to start** without the client id, client secret and owner id, or with the
   development login enabled (`internal/config/config.go`); the development login is checked again
   in the handler.
+
+## What is recorded about sign-ins?
+
+Every owner sign-in, every refusal (a GitHub account that isn't the owner's), every sign-out and
+every time sessions are ended goes into `auth_events`, in the owner's tenant. The application can
+add to that table and read it, nothing else. A refusal records the GitHub username and account
+number; no network address is kept, and the privacy page says so.
+
+Each is also written to the log as one structured line (`msg: security`, with an `event`), along
+with things that aren't sign-ins: a rejected scheduler call, a request that bypassed the edge, a
+rate limit being hit, a sandbox being created. An alert in Google Cloud matches three of them
+(a refused sign-in, a failed sign-in, a rejected scheduler call) and emails the owner
+(`deploy/cloudrun/alerts.tf`). The rest are logged without alerting: scanners produce them all
+day.
+
+## Can the owner see and end his sessions?
+
+Yes, on the console's Security screen. It lists his live sessions (what kind of device, when it
+signed in, when it ends) and the record of sign-ins, and can end one session or every session
+except the one in hand. Tokens and their hashes never leave the server: sessions have an id for
+this purpose.
 
 ## What happens when a visitor starts a sandbox?
 
@@ -151,6 +185,10 @@ Details worth knowing:
 
 The visitor now has the same console the owner uses, on their own data.
 
+A browser that already has a sandbox gets that one back when it asks to start another, so nothing
+is abandoned. "Start over" in the console puts a sandbox back to its three sample monitors without
+changing how long it has left.
+
 ## What keeps sandboxes from being abused?
 
 They are open to anyone on the internet, so each avenue is bounded:
@@ -159,7 +197,7 @@ They are open to anyone on the internet, so each avenue is bounded:
 |---|---|
 | Only simulated monitors: a sandbox can't make Lighthouse send a request anywhere | `normalize` in `validate.go` |
 | At most 10 monitors, checked no more often than every 10 seconds | `validate.go`, `createMonitor` |
-| 6 new sandboxes an hour per visitor address | `limiter.go` |
+| 6 new sandboxes an hour per visitor, counted in the database under a keyed hash of the address | `security.go`, `lighthouse_rate_hit` |
 | Writes limited to 5 a second per address | `limiter.go` |
 | Everything deleted two hours after creation (the session expires, then the clean-up removes the tenant and all its rows) | `lighthouse_prune` |
 | Never sends email, never appears on the public status page (that shows the owner's tenant only) | `internal/alert`, `internal/status` |
@@ -176,29 +214,19 @@ always use HTTPS.
 
 ## Known gaps
 
-- **The session cookie isn't bound to Lighthouse's exact address.** The demos share the parent
-  domain, and a page on a sibling address can set a cookie for the whole domain. If a demo were
-  compromised, it could plant its own `lh_session` in a visitor's browser (signing the owner into
-  an attacker's sandbox without their noticing). Naming the cookie with the `__Host-` prefix makes
-  browsers refuse any copy not set by Lighthouse's own address.
-- **Starting a sandbox always makes a new one.** A returning visitor whose cookie is still valid
-  goes back to their sandbox, but pressing "Start a sandbox" again creates a second tenant and
-  abandons the first until it expires. A visitor is recognised by the session cookie only; the
-  six-an-hour limit is per network address, which several people can share and one person can
-  change.
-- **The logs are written but not used.** Every request is logged as structured JSON (method, path,
-  status, duration) and kept by Cloud Logging; nothing watches them or raises an alarm.
 - **Two roles, checked in the handlers.** Owner or sandbox, with `id.Owner()` tests where they
   differ. Enough here; more roles would need a real permission model (which is what the RBAC-API
   project is).
-- **No record of sign-ins.** Owner sign-ins and refused attempts are in the request log only;
-  there is no audit trail and no alert on a refused attempt.
-- **The sandbox creation limit is in memory,** so it resets whenever the container sleeps, and is
-  per address (a determined abuser has many).
+- **A sandbox visitor is recognised by the session cookie only.** Someone who clears cookies, or
+  uses another browser, starts again. The six-an-hour limit is per network address, which several
+  people can share and one person can change.
+- **The sandbox limit's identity changes at midnight UTC,** with the daily secret it is hashed
+  under, so the count starts again then.
 - **Every request with a cookie costs a database lookup,** which also wakes a sleeping database.
-- **The owner's session can't be listed or revoked from the console.** Signing out ends the
-  current one; ending all of them means deleting rows by hand.
-- **Sandbox clean-up runs with the tick,** at most hourly, so an expired sandbox's rows linger up
+- **Sessions can't be extended.** The owner signs in again after 12 hours.
+- **Security alerts are email, at most one an hour,** and depend on Google Cloud's alerting. There
+  is no digest of the quieter events.
+- **Sandbox clean-up runs with the round,** at most hourly, so an expired sandbox's rows linger up
   to an hour after its session ends.
 
 ## Questions and answers

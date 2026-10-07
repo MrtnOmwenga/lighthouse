@@ -11,11 +11,14 @@ sources:
   - console/src/views/Incidents.vue
   - console/vite.config.ts
   - console/e2e/sandbox.spec.ts
+  - console/e2e/owner.spec.ts
+  - console/src/components/MonitorForm.vue
+  - console/src/views/Security.vue
   - internal/web/console.go
   - internal/web/server.go
   - internal/web/api.go
   - Dockerfile
-verified: 2026-10-06
+verified: 2026-10-07
 ---
 
 # The console
@@ -43,8 +46,8 @@ load fast, and must work without JavaScript. The console is the opposite: screen
 few seconds and respond to clicks, used by few people for minutes at a time. Each part uses the
 approach that fits it.
 
-The console is about a thousand lines of Vue 3 and TypeScript with two runtime dependencies (Vue
-and its router).
+The console is about 1,600 lines of Vue 3 and TypeScript with two runtime dependencies (Vue and
+its router).
 
 ## How does the console reach the browser?
 
@@ -92,7 +95,8 @@ Everything goes through one function, `call` in `api.ts`:
   cookie by itself. The console never sees or stores the token (it can't: the cookie is
   `HttpOnly`).
 - On an error the server answers in one standard shape (RFC 9457 "problem details": a status, a
-  title, a detail). `call` turns that into an `ApiError`, and each view shows its message.
+  title, a detail). `call` turns that into an `ApiError`, which says what to tell the person:
+  what to fix and where, to wait, to sign in again, or what to quote in a report.
 - The data shapes (`Monitor`, `Check`, `Incident`…) are TypeScript types, so a typo in a field
   name fails the build.
 
@@ -101,6 +105,17 @@ it: not found, forbidden, "that slug is in use" (from the database's unique rule
 outside its range" (from a database check). Anything unexpected is logged in full and the user
 gets a plain "Something went wrong", so internal details never reach the browser. Request bodies
 are capped at 64 KB and unknown fields are rejected (`readJSON`).
+
+Three things make errors usable:
+
+- **Validation reports every problem, each against its field** (`errors: [{field, message}]`), so
+  a form marks all the inputs that are wrong at once, not the first.
+- **Every response carries a request id** (`X-Request-Id`), which is also on that request's log
+  lines. An unexpected failure repeats the id in its body, and the console shows it: "If you
+  report it, quote 73701787986171d3". That is the link from what a person saw to what the server
+  recorded.
+- **The console reacts by status:** a 401 means the session is gone (back to the welcome page,
+  which says why), a 429 says to wait, and no answer at all says to check the connection.
 
 ## How does the console know who is signed in?
 
@@ -116,14 +131,28 @@ browser. The real rule is on the server: `/api/analytics` answers 403 to a sandb
 console shows, and every query is confined to the session's tenant by the database. A browser test
 asserts exactly this (`sandboxes are isolated and never see the owner area`).
 
+## What can be done with a monitor?
+
+- **Add or edit one** through the same form (`MonitorForm.vue`): address, interval, when it counts
+  as down, timeout, accepted status and text, public, paused.
+- **Test settings before saving** ("Test these settings"): the server probes with them and
+  records nothing. The test passes the same validation and the same address guard as a scheduled
+  check, so a sandbox can only try simulated monitors.
+- **Check now:** a monitor is checked the moment it is saved, and on request, so a mistyped
+  address is seen at once and not at the next round.
+
 ## How does the screen stay up to date?
 
-By polling. `usePoll` (`poll.ts`, 16 lines) runs a view's `refresh` immediately, then every five
-seconds (ten for the status preview), and:
+By polling. `usePoll` (`poll.ts`) runs a view's `refresh` immediately, then every five seconds
+(ten for the status preview), and:
 
 - **skips while the tab is hidden**, so a forgotten tab costs nothing;
 - **waits for one request to finish before scheduling the next**, so slow answers can't pile up;
-- **stops when you leave the screen.**
+- **stops when you leave the screen;**
+- **eases off when nothing changes:** after six identical answers it polls a third as often, and
+  returns to full speed the moment something changes or the person does something.
+
+The monitors screen gets everything it shows in one request (`GET /api/overview`).
 
 **Why not push updates from the server (WebSockets or server-sent events)?** Those need a
 connection held open per viewer. On Cloud Run an open connection keeps the container awake and
@@ -160,35 +189,16 @@ polling and loads older pages on demand.
 
 ## Known gaps
 
-- **A monitor can't be edited from the console.** The API has an update call and `api.ts` wraps it,
-  but no screen uses it. Changing a URL, pausing a monitor or adjusting thresholds means deleting
-  and re-adding, or calling the API by hand. The add form doesn't offer thresholds, timeout,
-  expected status or expected text either; they take defaults.
-- **An expired session isn't handled.** When a session ends mid-use, every poll fails with "not
-  signed in" and the screen shows an error forever. Nothing sends the visitor back to the welcome
-  page; the sandbox banner counts down to "0 min" and stays.
-- **Polling is expensive for what it does.** A visible monitors screen makes two requests every
-  five seconds; each costs a session lookup, and one recomputes uptime figures from raw check
-  rows. An open console keeps the database awake, which spends the free compute budget.
 - **The data shapes are written twice,** once as Go structs and once as TypeScript types, by hand.
   Nothing fails if they drift apart.
-- **The behaviour switch groups its radio buttons by monitor name.** Names needn't be unique, so
-  two monitors with the same name would share one group and interfere with each other.
-- **A release can strand an open tab.** Each screen is a separate hashed file fetched on first
-  visit. After a release the old files no longer exist, so a tab opened before it fails when it
-  navigates to a screen it hasn't loaded yet, until the page is reloaded.
-- **Errors can't be traced or pinned to a field.** There is no request id tying "Something went
-  wrong" to its log line; validation reports the first problem as one sentence, not per field; and
-  the console prints every failure the same way whatever its status.
-- **Some actions have no error handling:** changing mode on the detail screen, and "older
-  incidents".
-- **Thin tests.** Two components and the helpers have unit tests; no screen does. The browser
-  tests cover the sandbox only; nothing exercises the owner's screens, the readers report or adding
-  an HTTP monitor.
-- **The sandbox walkthrough doesn't work on the live site,** because sandbox monitors aren't
-  checked under the external schedule (see the monitoring page). The browser test passes because
-  it runs against the looping scheduler.
+- **Polling still costs a database query each time,** and an open console keeps the database
+  awake. Uptime figures are recomputed from raw check rows on each poll.
 - **Deleting uses the browser's own confirm box,** and there is no undo.
+- **Screens have no unit tests of their own.** The form, the error mapping, the polling back-off
+  and two components do; the screens are covered by the browser tests, which run against a real
+  server and take half a minute.
+- **A release under an open tab** is handled by reloading once when a screen's file is gone. Work
+  typed into a form at that moment would be lost.
 
 ## Questions and answers
 
@@ -234,6 +244,13 @@ validation errors.
 **Why cursor pagination?**
 It stays fast at any depth and doesn't repeat or skip rows when new ones are added while someone
 is paging.
+
+**What do the browser tests cover?**
+The sandbox from start to finish (break a site, watch the incident open and close), the phone
+layout, isolation between two visitors, the owner adding, testing, editing and pausing an HTTP
+monitor, an incident opened and resolved by hand, the readers report, the Security screen with a
+sign-out everywhere else, a session that ends, and a sandbox reset. Ten tests, against a real
+server and database.
 
 **What is an optimistic update, and where is it used?**
 Showing a change before the server confirms it, and undoing it on failure. It is used for the

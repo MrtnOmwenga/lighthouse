@@ -1,6 +1,6 @@
 ---
 title: "Shipping the apps: the pipeline"
-project: lighthouse (the same pipeline runs in RBAC-API and GhostChat)
+project: lighthouse (RBAC-API and GhostChat run the earlier, simpler version of this pipeline)
 topics: [ci-cd, github-actions, docker, cosign, workload-identity-federation, cloud-run, migrations]
 sources:
   - .github/workflows/release.yml
@@ -8,7 +8,8 @@ sources:
   - Dockerfile
   - deploy/cloudrun/identity.tf
   - deploy/cloudrun/registry.tf
-verified: 2026-10-05
+  - internal/store/migrations/README.md
+verified: 2026-10-07
 ---
 
 # Shipping the apps: the pipeline
@@ -156,23 +157,48 @@ The deployer account can push images to one registry, update the Cloud Run servi
 migration jobs, and act as the three services' runtime accounts to do so. It can't read secrets'
 values directly or touch anything else in the project.
 
+## When does a release run?
+
+Not on every push. The release workflow is started by the CI workflow **finishing successfully on
+a commit pushed to `main`** (`on: workflow_run`), and it builds exactly that commit. A commit CI
+hasn't passed is never built or deployed. A release can also be started by hand; then the first
+step asks GitHub whether CI passed on that commit, and stops if it didn't.
+
+`main` itself is protected by a branch rule: changes arrive through a pull request whose six CI
+checks have passed, and force pushes and deletion are blocked. The rule and the workflow
+dependency do different jobs. The rule can be changed by an administrator; the dependency is part
+of the workflow and can't be skipped by a setting.
+
 ## What does the "deploy" job do?
 
-- **Copies the image** from GHCR to Artifact Registry with `crane copy --platform linux/amd64`.
-  Cloud Run can't pull from GHCR, and it only runs amd64, so only that architecture is copied
-  (which also keeps storage inside the registry's free 0.5 GB).
-- **Pins the digest.** Everything after the copy refers to `image@sha256:…`, never a tag. A tag can
-  be moved to different content; a digest can't.
-- **Migrates.** A separate Cloud Run job runs the app's migration command on the new image, as the
-  database owner, and the workflow waits for it. If it fails, the deploy stops and the previous
-  version keeps serving.
-- **Deploys** by changing only the service's image. The service's settings, secrets and limits
-  belong to Terraform, which ignores the image field.
-- **Smoke-tests** the public address through Cloudflare for up to a minute, so the whole path is
-  tested, not the container alone.
+In order, each step stopping the release if it fails:
+
+1. **Verifies the signature.** `cosign verify` checks that the image was signed by this
+   repository's release workflow on `main`, before anything is copied. A signature nobody checks
+   protects nothing; this is the check.
+2. **Copies the image** from GHCR to Artifact Registry with `crane copy --platform linux/amd64`.
+   Cloud Run can't pull from GHCR, and it only runs amd64, so only that architecture is copied
+   (which also keeps storage inside the registry's free 0.5 GB).
+3. **Pins the digest.** Everything after the copy refers to `image@sha256:…`, never a tag. A tag
+   can be moved to different content; a digest can't.
+4. **Migrates.** A separate Cloud Run job runs the app's migration command on the new image, as
+   the database owner, and the workflow waits for it. If it fails, its output is printed in the
+   workflow log and the previous version keeps serving.
+5. **Starts the new revision with no traffic,** and gives it a private address (a "candidate"
+   tag).
+6. **Tests the candidate** at that address (`/readyz`). If it doesn't answer, the release stops
+   and no visitor ever reached the new revision.
+7. **Moves traffic** to the new revision.
+8. **Tests again through the edge** (the public address, through Cloudflare).
+9. **Rolls back** if that test fails: traffic goes back to the previous revision, automatically.
 
 The job is skipped when the `GCP_*` variables aren't set (a fork still builds cleanly), and deploys
 never overlap (`concurrency`).
+
+**Why not a canary** (sending a few percent of visitors to the new revision first)? A canary needs
+enough traffic to tell a bad revision from a good one. This site gets tens of visits a week; 5% of
+that is no signal. Testing the revision before it takes traffic, and rolling back on failure,
+gives the safety without pretending to measure something.
 
 ## Why are migrations a separate job, not something the app does at startup?
 
@@ -211,37 +237,53 @@ on Arm laptops. Cross-compiling makes it nearly free.
 
 ## What does the smoke test check?
 
-`GET /readyz` on the public address, through Cloudflare and the edge Worker, expecting 200 within a
-minute. `/readyz` pings the database with a two-second limit, so a 200 means: DNS, the edge, the
+`GET /readyz`, twice: first on the new revision's private address before it takes traffic, then on
+the public address, through Cloudflare and the edge Worker, expecting 200 within a minute. `/readyz` pings the database with a two-second limit, so a 200 means: DNS, the edge, the
 new revision starting, its secrets, and its database connection all work. It doesn't exercise any
 feature.
 
+## What rule do migrations follow?
+
+Migrations run before the new code takes traffic, while the previous release is still serving. So
+**a migration must work with the release that is live when it runs**: add first, remove in a later
+release. The rule is written down beside the migrations
+(`internal/store/migrations/README.md`), and a test runs every migration down to nothing and back
+up (`TestMigrationsRunDownAndUpAgain`), so the "undo" scripts are known to work.
+
+A rollback moves traffic, not the schema: because of the rule, the previous code works with the
+new schema.
+
+## What did running it for real find?
+
+Two faults that reading the workflow didn't show:
+
+- **The release failed its own gate once.** It asked GitHub "has CI passed on this commit?" a
+  moment after CI finished, and the run that had just finished wasn't in the list yet. The gate
+  now trusts the event that started it, and only asks (with retries) for releases started by hand.
+- **The candidate step broke Terraform.** Passing the tag to the service update wrote the new
+  revision's name into the service's template; the next Terraform change was refused for reusing
+  that name. The tag is now set afterwards, as a traffic change.
+
 ## Known gaps
 
-- **Nothing forces code through CI before it deploys.** The release branches have no branch
-  protection: pull requests run the tests, but a direct push would deploy untested code. Fix: a
-  branch ruleset requiring a pull request and passing checks.
-- **The signature isn't verified at deploy time.** The image is signed, but the deploy job doesn't
-  run `cosign verify` before copying it, so the signature currently proves origin only to someone
-  who checks it.
-- **No automatic rollback.** A failed smoke test fails the job, but the new revision keeps serving.
-  Cloud Run keeps earlier revisions, so rolling back is one command, done by hand.
-- **Third-party actions are referenced by tag** (`@v3`, `@v7`), which their owners can move. A
-  compromised action would run inside the job that can deploy. Fix: pin each action to a commit
-  hash and let Dependabot update the pins.
-- **A failed migration's output isn't shown in the workflow log**; it has to be looked up in Cloud
-  Logging.
-- **Nothing watches Lighthouse from outside.** It monitors the other apps and itself, but if it is
-  down, nothing reports that (see the monitoring page).
-- **Migrations must tolerate the old code** for the seconds between the migration and the new
-  revision taking traffic. Nothing enforces that discipline yet (add first, remove in a later
-  release).
+- **RBAC-API and GhostChat still run the earlier pipeline:** release on every push to the release
+  branch, no signature check, no candidate revision, no rollback. Their branches require a pull
+  request, without required checks yet. Bringing them level is part of their own reviews.
+- **A manual release can be started by anyone with write access.** It still requires CI to have
+  passed on the commit.
+- **The candidate test is `/readyz` only:** the revision starts, reads its secrets and reaches its
+  database. It doesn't exercise a feature.
+- **The database is never rolled back automatically.** That is deliberate (see the rule above),
+  and it means a migration that is itself wrong needs a person.
+- **Database passwords generated by Terraform are still in its state.** Secrets a person obtained
+  are not (see the Cloud Run page).
 
 ## Questions and answers
 
 **What would an attacker need to deploy to the project?**
-Write access to a release branch of one of the three repositories (or control of an action the
-workflow runs). The facts in the token (repository, branch) are public, not secret; what protects
+Write access to a release branch of one of the three repositories, which now means getting a pull
+request merged (or control of an action the workflow runs; in Lighthouse those are pinned to commit
+hashes, so a moved tag can't swap one). The facts in the token (repository, branch) are public, not secret; what protects
 the system is that only GitHub can sign a token stating them, and Google checks that signature.
 There is no key to steal.
 

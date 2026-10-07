@@ -8,7 +8,7 @@ sources:
   - internal/store/monitors.go
   - internal/store/store_test.go
   - internal/web/server.go
-verified: 2026-10-06
+verified: 2026-10-07
 ---
 
 # Data model and tenant isolation
@@ -38,8 +38,10 @@ tenants ──┬── monitors ──── checks              (one row per p
           └── sessions                          (who is signed in, as which tenant)
 ```
 
-Every table except `tenants` carries a `tenant_id` column saying whose row it is. (A second
-migration adds the analytics tables; see the analytics page.)
+Every table except `tenants` carries a `tenant_id` column saying whose row it is. Later migrations
+add the analytics tables (see the analytics page), a record of sign-ins (`auth_events`, see the
+auth page), and one table that belongs to no tenant: `rate_limits`, counters the application can
+reach only through a function.
 
 ## What is the risk in sharing one database?
 
@@ -118,6 +120,8 @@ A few things must be asked before a tenant is known, or across all of them:
 | `lighthouse_session` | Which tenant does this session cookie belong to? |
 | `lighthouse_owner_tenant` | Which tenant is the owner's? (created on first use) |
 | `lighthouse_prune` | Delete old checks, expired sessions and expired sandboxes |
+| `lighthouse_daily_salt`, `lighthouse_prune_analytics` | The day's secret for counting visitors; delete old visit records |
+| `lighthouse_rate_hit`, `lighthouse_prune_security` | Count one more use against a limit; delete old sign-in records and counters |
 
 Each is a `SECURITY DEFINER` function: it runs with its creator's permissions instead of the
 caller's, like a clerk who may fetch one specific thing from a room the public can't enter. Each
@@ -126,7 +130,7 @@ monitors), has its search path pinned so it can't be tricked into calling a look
 and can be executed only by the application role. The scheduler takes the ids, then does the real
 work inside each monitor's own tenant.
 
-These four functions are the only code that sees across tenants, which makes them the code to
+These eight functions are the only code that sees across tenants, which makes them the code to
 review most carefully. A test checks they answer exactly what they should
 (`TestCrossTenantFunctions`).
 
@@ -187,14 +191,16 @@ Each was also checked the other way round: with the protection removed, the test
 - **The check history grows and is scanned.** One table holds every result for 90 days, and the
   status figures are computed from the raw rows on each request. Fine at this size; the next steps
   would be daily summaries, then partitioning the table by time.
-- **The four cross-tenant functions are trusted code.** A mistake in one would cross tenants, and
+- **The eight cross-tenant functions are trusted code.** A mistake in one would cross tenants, and
   the migration role they run as has `BYPASSRLS`. They are small and tested; they must stay few.
 - **Isolation is by row, not by resource.** Tenants share the same database, tables and
   connection pool, so one very busy tenant could slow the others. Sandboxes are bounded (ten
   monitors, two hours, a creation limit per visitor), not metered.
 - **Everything depends on the right tenant id being set.** That comes from the session
   (see the auth page): the database isolates tenants perfectly and has no opinion on who is who.
-- **Two migrations, never rolled back in anger.** The "down" scripts exist and aren't exercised.
+- **Rolling a migration back has only been done in a test.** Every migration's "down" script is run
+  by `TestMigrationsRunDownAndUpAgain` (all the way down, and up again); none has been needed on
+  the live database.
 
 ## Questions and answers
 
