@@ -39,11 +39,18 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
     timeout-minutes: 30
     steps:
+      # Started by CI finishing, the job's condition above is the proof. Started by hand, ask:
+      # a few times, because a run that has only just finished can be missing from the list.
       - name: CI passed on this commit
+        if: github.event_name == 'workflow_dispatch'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success" --jq '.total_count')
-          [ "$passed" -gt 0 ] || { echo "CI has not passed on $SHA; not releasing it."; exit 1; }
+          for attempt in 1 2 3 4 5; do
+            passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success" --jq '.total_count')
+            [ "$passed" -gt 0 ] && exit 0
+            sleep 6
+          done
+          echo "CI has not passed on $SHA; not releasing it."; exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with: { ref: "${{ env.SHA }}" }
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4

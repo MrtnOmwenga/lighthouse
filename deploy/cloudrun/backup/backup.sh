@@ -113,11 +113,14 @@ restore_test() {
   done
 
   if get latest/ghostchat.archive.gz "$WORK/ghostchat.archive.gz" 2>/dev/null; then
-    # There is no MongoDB server here to restore into: the archive is read end to end instead.
-    command -v mongorestore >/dev/null || apk add --no-cache --quiet mongodb-tools || said "could not install mongorestore"
-    mongorestore --quiet --gzip --archive="$WORK/ghostchat.archive.gz" --dryRun || said "the ghostchat archive can't be read"
-    report="$report ghostchat:archive=readable"
-    echo "ghostchat: archive read end to end"
+    # There is no MongoDB server here to restore into (mongorestore needs one even for a dry
+    # run), so this is a weaker check than PostgreSQL gets: the archive decompresses without
+    # error from start to finish, and isn't empty.
+    gzip -t "$WORK/ghostchat.archive.gz" || said "the ghostchat archive is damaged"
+    bytes="$(gzip -dc "$WORK/ghostchat.archive.gz" | wc -c | tr -d ' ')"
+    [ "$bytes" -gt 0 ] || said "the ghostchat archive is empty"
+    report="$report ghostchat:archive_bytes=$bytes"
+    echo "ghostchat: archive intact, $bytes bytes uncompressed"
   fi
   [ -n "$report" ] || said "nothing was restored"
 
