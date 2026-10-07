@@ -28,6 +28,9 @@ type Recorder struct {
 	OwnerTenant string
 	Host        string // the site's own host, left out of referrers
 	Now         func() time.Time
+	// TagOpened, if set, hears the first time each day that a link carrying a ?ref= tag is
+	// opened: the tag, the page it landed on, and the kind of device. Nothing about who.
+	TagOpened func(ctx context.Context, tag, page, device string)
 
 	mu   sync.Mutex
 	day  string
@@ -90,7 +93,10 @@ func Device(userAgent string) string {
 var (
 	slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,49}$`)
 	refPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
-	eventNames  = map[string]bool{"demo_ready": true, "demo_open": true, "intro_skip": true}
+	eventNames  = map[string]bool{
+		"demo_ready": true, "demo_open": true, "intro_skip": true,
+		"cv_download": true, "outbound_github": true, "outbound_linkedin": true, "contact_email": true, "read_to_end": true,
+	}
 )
 
 // Page maps a URL path to the page it counts as, and the project it belongs to. Only the site's
@@ -163,7 +169,19 @@ func (r *Recorder) View(ctx context.Context, h Hit) error {
 		ID: h.ID, At: now, Visitor: Visitor(salt, h.IP, h.UserAgent), Path: page, Project: project,
 		Ref: Ref(h.Ref), Referrer: r.Referrer(h.Referrer), Device: Device(h.UserAgent),
 	}
-	return store.WithTenant(ctx, r.Pool, r.OwnerTenant, func(tx pgx.Tx) error { return store.InsertView(ctx, tx, r.OwnerTenant, v) })
+	first := false
+	err = store.WithTenant(ctx, r.Pool, r.OwnerTenant, func(tx pgx.Tx) error {
+		if err := store.InsertView(ctx, tx, r.OwnerTenant, v); err != nil || v.Ref == nil {
+			return err
+		}
+		n, err := store.TagViewsOn(ctx, tx, *v.Ref, now)
+		first = n == 1
+		return err
+	})
+	if err == nil && first && r.TagOpened != nil {
+		r.TagOpened(ctx, *v.Ref, page, v.Device)
+	}
+	return err
 }
 
 // Ping credits a view with engaged time (measured on the server).
@@ -186,6 +204,7 @@ type Report struct {
 	Pages     []store.PageStat    `json:"pages"`
 	Projects  []store.ProjectStat `json:"projects"`
 	Refs      []store.RefStat     `json:"refs"`
+	Actions   []store.Count       `json:"actions"` // what visitors did, by how many did it
 	Referrers []store.Count       `json:"referrers"`
 	Devices   []store.Count       `json:"devices"`
 }
@@ -203,6 +222,9 @@ func (r *Recorder) Report(ctx context.Context, days int) (Report, error) {
 			return err
 		}
 		if rep.Refs, err = store.RefStats(ctx, tx, rep.Since); err != nil {
+			return err
+		}
+		if rep.Actions, err = store.ActionCounts(ctx, tx, rep.Since); err != nil {
 			return err
 		}
 		if rep.Referrers, err = store.Breakdown(ctx, tx, "referrer", rep.Since); err != nil {

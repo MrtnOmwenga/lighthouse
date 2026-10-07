@@ -38,6 +38,13 @@ func InsertView(ctx context.Context, tx pgx.Tx, tenantID string, v PageView) err
 	return err
 }
 
+// TagViewsOn counts the views recorded on at's UTC day that carry the tag.
+func TagViewsOn(ctx context.Context, tx pgx.Tx, tag string, at time.Time) (int, error) {
+	var n int
+	err := tx.QueryRow(ctx, `SELECT count(*) FROM page_views WHERE ref = $1 AND day = ($2::timestamptz AT TIME ZONE 'UTC')::date`, tag, at).Scan(&n)
+	return n, err
+}
+
 // MaxPingCredit is the most engaged time one heartbeat can add. Browsers send one every 15
 // seconds while someone is actually using the page; the server measures the gap itself, so a
 // client can't claim more time than has passed, and time spent away is never counted.
@@ -160,25 +167,32 @@ type RefStat struct {
 	EngagedSeconds int       `json:"engagedSeconds"`
 	Pages          []string  `json:"pages"`
 	DemosOpened    int       `json:"demosOpened"`
+	Actions        []string  `json:"actions"` // what they did besides reading: cv_download, outbound_github, …
 }
 
 func RefStats(ctx context.Context, tx pgx.Tx, since time.Time) ([]RefStat, error) {
+	// Views first, events apart: joining them in one pass would count a view once per event.
 	rows, err := tx.Query(ctx, `WITH tagged AS (
 			SELECT DISTINCT ref, day, visitor FROM page_views WHERE ref IS NOT NULL AND at >= $1
+		), v AS (
+			SELECT t.ref, pv.id, pv.day, pv.visitor, pv.at, pv.path, pv.engaged_seconds
+			FROM tagged t JOIN page_views pv ON pv.day = t.day AND pv.visitor = t.visitor
+		), ev AS (
+			SELECT DISTINCT v.ref, v.id, e.name FROM v JOIN analytics_events e ON e.view_id = v.id
 		)
-		SELECT t.ref, count(DISTINCT (t.day, t.visitor)), min(v.at), max(v.at), count(v.id),
-			coalesce(sum(v.engaged_seconds), 0)::int, array_agg(DISTINCT v.path ORDER BY v.path),
-			count(e.id)
-		FROM tagged t
-		JOIN page_views v ON v.day = t.day AND v.visitor = t.visitor
-		LEFT JOIN analytics_events e ON e.view_id = v.id AND e.name = 'demo_open'
-		GROUP BY t.ref ORDER BY max(v.at) DESC`, since)
+		SELECT v.ref, count(DISTINCT (v.day, v.visitor)), min(v.at), max(v.at), count(DISTINCT v.id),
+			(SELECT coalesce(sum(d.engaged_seconds), 0)::int FROM (SELECT DISTINCT id, engaged_seconds FROM v x WHERE x.ref = v.ref) d),
+			array_agg(DISTINCT v.path ORDER BY v.path),
+			(SELECT count(*) FROM ev WHERE ev.ref = v.ref AND ev.name = 'demo_open'),
+			coalesce((SELECT array_agg(DISTINCT ev.name ORDER BY ev.name) FROM ev
+				WHERE ev.ref = v.ref AND ev.name NOT IN ('demo_ready', 'demo_open', 'intro_skip')), '{}')
+		FROM v GROUP BY v.ref ORDER BY max(v.at) DESC`, since)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (RefStat, error) {
 		var s RefStat
-		return s, r.Scan(&s.Ref, &s.Visitors, &s.FirstSeen, &s.LastSeen, &s.Views, &s.EngagedSeconds, &s.Pages, &s.DemosOpened)
+		return s, r.Scan(&s.Ref, &s.Visitors, &s.FirstSeen, &s.LastSeen, &s.Views, &s.EngagedSeconds, &s.Pages, &s.DemosOpened, &s.Actions)
 	})
 }
 
@@ -186,6 +200,21 @@ func RefStats(ctx context.Context, tx pgx.Tx, since time.Time) ([]RefStat, error
 type Count struct {
 	Label    string `json:"label"`
 	Visitors int    `json:"visitors"`
+}
+
+// ActionCounts is how many visitors did each thing (opened a demo, took the CV, went on to
+// GitHub…). A demo becoming ready happens by itself, so it isn't listed.
+func ActionCounts(ctx context.Context, tx pgx.Tx, since time.Time) ([]Count, error) {
+	rows, err := tx.Query(ctx, `SELECT e.name, count(DISTINCT (v.day, v.visitor))
+		FROM analytics_events e JOIN page_views v ON v.id = e.view_id
+		WHERE v.at >= $1 AND e.name <> 'demo_ready' GROUP BY 1 ORDER BY 2 DESC, 1`, since)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Count, error) {
+		var c Count
+		return c, r.Scan(&c.Label, &c.Visitors)
+	})
 }
 
 // Breakdown counts distinct visitors by referrer or device.
