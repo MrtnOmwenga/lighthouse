@@ -31,6 +31,7 @@ GitHub Actions ── OIDC, no stored keys ──▶ Artifact Registry ──▶
 | `databases.tf` | Two Neon projects, one per app |
 | `secrets.tf` | Secret Manager: the credentials, each readable only by its own service |
 | `infisical.tf` | Reads the secrets a person had to obtain from Infisical, as ephemeral values that never reach Terraform's state |
+| `backups.tf` | Nightly backups of the three databases to a bucket, a weekly restore test, and an alert when either fails (`backup/backup.sh` is the script) |
 | `grafana.tf` | What is done with the figures Lighthouse reports after each round: a dashboard, an alert when they stop arriving, an alert on server errors |
 | `alerts.tf` | An email when a sign-in is refused or a scheduler call is rejected (a log-based alert) |
 | `identity.tf` | A service account per service, the scheduler's caller identity, and keyless deploys from GitHub |

@@ -33,9 +33,10 @@ resource "google_monitoring_alert_policy" "security_events" {
     }
   }
   alert_strategy {
-    # At most one email an hour, however many events; the incident closes itself after a day.
+    # At most one email an hour, however many events. The incident closes itself after half an
+    # hour (the shortest allowed), so a later event opens a new one and is announced again.
     notification_rate_limit { period = "3600s" }
-    auto_close = "86400s"
+    auto_close = "1800s"
   }
   notification_channels = [google_monitoring_notification_channel.owner_email[0].id]
   documentation {
