@@ -28,6 +28,7 @@ import (
 	"github.com/MrtnOmwenga/lighthouse/internal/analytics"
 	"github.com/MrtnOmwenga/lighthouse/internal/auth"
 	"github.com/MrtnOmwenga/lighthouse/internal/config"
+	"github.com/MrtnOmwenga/lighthouse/internal/metrics"
 	"github.com/MrtnOmwenga/lighthouse/internal/monitor"
 	"github.com/MrtnOmwenga/lighthouse/internal/oidc"
 	"github.com/MrtnOmwenga/lighthouse/internal/site"
@@ -60,6 +61,8 @@ type Server struct {
 	// Checks runs a check on request: "check now" on a monitor, and trying settings before they
 	// are saved. Without it those endpoints don't exist.
 	Checks *monitor.Scheduler
+	// Metrics, if set, counts answered requests by status class.
+	Metrics *metrics.Registry
 
 	pages  *template.Template
 	status statusCache
@@ -508,6 +511,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			return
 		}
+		s.Metrics.Request(rec.status)
 		s.Log.Info("request", "id", requestID(r), "method", r.Method, "path", r.URL.Path, "status", rec.status, "ms", time.Since(start).Milliseconds())
 	})
 }

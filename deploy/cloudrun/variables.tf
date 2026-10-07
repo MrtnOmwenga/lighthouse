@@ -89,3 +89,15 @@ variable "smtp_host" {
   type    = string
   default = "smtp.gmail.com"
 }
+
+variable "metrics_push_url" {
+  type        = string
+  default     = ""
+  description = "Grafana Cloud's InfluxDB line-protocol endpoint for the stack's Prometheus (https://<prometheus host>/api/v1/push/influx/write). Empty: no metrics, dashboard or Grafana alerts."
+}
+
+variable "metrics_push_user" {
+  type        = string
+  default     = ""
+  description = "The Prometheus instance's numeric user. Its token is kept in Infisical."
+}

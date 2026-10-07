@@ -41,6 +41,7 @@ locals {
   kept = {
     lighthouse-github-secret = { service = "lighthouse", folder = "/lighthouse", name = "GITHUB_OAUTH_CLIENT_SECRET" }
     lighthouse-smtp-password = { service = "lighthouse", folder = "/lighthouse", name = "SMTP_PASSWORD" }
+    lighthouse-metrics-token = { service = "lighthouse", folder = "/lighthouse", name = "GRAFANA_PROM_TOKEN" }
     ghostchat-mongodb-uri    = { service = "ghostchat", folder = "/ghostchat", name = "MONGODB_URI" }
   }
   secrets = merge(local.generated, local.kept)
