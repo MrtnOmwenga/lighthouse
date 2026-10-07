@@ -3,7 +3,7 @@
 # (deploy/k8s) and are never shown publicly.
 
 profile:
-  strip: "A live portfolio. Every project on this page is running now, and every figure is measured by the site itself."
+  strip: "Backend and platform engineer in Nairobi. Everything on this page is running now, and every figure is measured by the site itself."
   portrait: portrait.jpg
   preview: preview.png
   portrait_caption: Martin Omwenga, Nairobi.
@@ -15,26 +15,42 @@ profile:
 
   lead:
     kicker: About the engineer
-    headline: Martin Omwenga builds backend systems, and the platforms that keep them running
+    headline: "Martin Omwenga owns backend systems end to end: from the client's requirements to the pipeline, the cluster and the incident"
     standfirst: >-
-      A fullstack and platform engineer in Nairobi, currently tech lead on platforms for European
-      clients. This site is his portfolio, and also one of his projects: every demo below is live,
-      checked every 15 minutes by a monitoring system he wrote.
-    paragraphs:
-      - >-
-        Recent work includes preview environments for every pull request on Kubernetes, a two-way
-        sync between an ordering platform and a Sage ERP, Node.js and Kafka services handling more
-        than 10,000 requests a minute, and an AI assistant with tool use and retrieval, in
-        production.
-      - >-
-        He works mostly in TypeScript (NestJS, Express) with PostgreSQL, Kafka, Kubernetes and
-        Terraform, and holds the AWS Solutions Architect – Associate certification. Lighthouse, the
-        system that publishes this page, is written in Go.
+      Four years building and running production systems for European clients, the last two as
+      tech lead of a small team. He writes the API, the tests, the Terraform and the deploy
+      pipeline, and stays with the system once it is live. This site is the proof: he wrote the
+      system that publishes it and monitors every demo on it.
+
+  delivered:
+    - title: A preview environment for every pull request
+      body: "On Kubernetes: a namespace per pull request, routed at the edge, torn down when it closes. Designed and built it."
+    - title: A production incident found and fixed in three hours
+      body: An order mismatch in a two-way sync between an ordering platform and an ERP. The sync has retries, status logging and freshness alerts, so problems surface by themselves.
+    - title: Secrets moved out of CI
+      body: Into a dedicated secrets manager, after an access-control review of who could read what.
+    - title: An AI assistant in production
+      body: An agent loop with tool use and retrieval, behind a queue, reached through a chat bot.
+    - title: "10,000+ requests a minute"
+      body: Node.js services on Kafka, built as microservices for a high-traffic platform.
+    - title: From requirements to sign-off
+      body: Leads two to three engineers, gathers requirements from the client directly, and takes the work through to their sign-off.
+
+  works:
+    - title: Tested, and the tests are tested
+      body: One project here has 605 tests, and deliberately introduced bugs prove the tests catch them.
+    - title: Written down
+      body: Every project has its decisions, trade-offs and known limits in writing.
+    - title: Operated, not only built
+      body: Signed releases, deploys with no stored credentials, monitoring, and a timeline for every incident.
+    - title: With AI tools, deliberately
+      body: Wrote the rules and the documentation pipeline his company's engineers use with AI coding tools.
 
   glance:
-    - { label: Role, value: "Tech lead · fullstack & platform" }
-    - { label: Based, value: "Nairobi, Kenya (GMT+3)" }
-    - { label: Stack, value: "TypeScript · PostgreSQL · Kubernetes · Terraform" }
+    - { label: Role, value: "Tech lead · backend & platform" }
+    - { label: Works with, value: "Clients directly · a team of 2–3" }
+    - { label: Hours, value: "Nairobi, GMT+3 · full European overlap" }
+    - { label: Stack, value: "TypeScript · Go · PostgreSQL · Kubernetes · Terraform" }
     - { label: Certified, value: "AWS Solutions Architect – Associate" }
 
   how_to:
@@ -47,7 +63,7 @@ profile:
 
   about:
     kicker: Profile
-    headline: "Four years, four industries, one habit: shipping the infrastructure too"
+    headline: "Four years of production systems for European clients, and the team and platform behind them"
     standfirst: >-
       Martin Omwenga is a fullstack and platform engineer in Nairobi. He builds production systems,
       and the Kubernetes, Terraform and CI/CD that ship them, and leads a small team from client
@@ -114,8 +130,8 @@ profile:
 projects:
   - slug: redacted
     name: Redacted
-    kicker: Redacted · Security · Live demo
-    headline: "Exposed: inside the intelligence agency's briefing room, where secrets black out mid-sentence"
+    kicker: Redacted · Security · Live demo · Secrets black out mid-sentence
+    headline: "Multi-tenant access control where hidden text is never sent: PostgreSQL row-level security and 605 tests"
     standfirst: >-
       The agency is fictional; the security is not. Three agents share one live document, and the
       moment one loses clearance, the classified words vanish from their screen.
@@ -180,8 +196,8 @@ projects:
 
   - slug: ghostchat
     name: GhostChat
-    kicker: GhostChat · Cryptography · Live demo
-    headline: "Leak-proof: the messaging app built on the assumption that its own server is already compromised"
+    kicker: GhostChat · Cryptography · Live demo · Leak-proof
+    headline: "End-to-end encrypted chat that stays private if its own server is breached, with a verifiable key log"
     plain: >-
       Private messaging where even whoever runs the server can't read your messages or quietly
       change them.
@@ -234,8 +250,8 @@ projects:
 
   - slug: lighthouse
     name: Lighthouse
-    kicker: Lighthouse · Infrastructure · The system behind this page
-    headline: The website that monitors itself, logs its own failures and publishes the evidence
+    kicker: Lighthouse · Infrastructure · The site that monitors itself
+    headline: "Uptime monitoring and incident tracking in Go, deployed with signed images and no stored credentials"
     standfirst: >-
       Every 15 minutes it checks each project on this page. When one goes down it opens an
       incident, writes up what happened, and closes the case when service returns. Nobody has to
@@ -281,8 +297,8 @@ projects:
 
   - slug: pair-bridge
     name: PairBridge
-    kicker: PairBridge · Systems · Runs on your devices
-    headline: "Off the grid: how a laptop and a tablet share files without ever touching the cloud"
+    kicker: PairBridge · Systems · Off the grid
+    headline: "Linux and Android file sharing over the local network: a FUSE filesystem and an Android documents provider"
     plain: >-
       A Linux PC shows up in every Android file picker, like Google Drive, but the files never
       leave your own network.

@@ -65,9 +65,11 @@ type Profile struct {
 	PortraitCaption string    `yaml:"portrait_caption"`
 	Preview         string    `yaml:"preview"` // the image link previews show, in media/ (1200×630)
 	Links           Links     `yaml:"links"`
-	Lead            Article   `yaml:"lead"`   // the front page's story about the owner
-	Glance          []Fact    `yaml:"glance"` // "At a glance"
-	HowTo           []Item    `yaml:"how_to"` // "How to read this site"
+	Lead            Article   `yaml:"lead"`      // the front page's story about the owner
+	Delivered       []Item    `yaml:"delivered"` // named outcomes, under the lead
+	Works           []Item    `yaml:"works"`     // how the owner works, in a row under the lead
+	Glance          []Fact    `yaml:"glance"`    // "At a glance"
+	HowTo           []Item    `yaml:"how_to"`    // "How to read this site"
 	About           AboutPage `yaml:"about"`
 }
 
