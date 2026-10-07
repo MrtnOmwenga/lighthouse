@@ -23,7 +23,9 @@ func TestBuildShowsOnlyPublicData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
+	// Noon, so that "an hour ago" is still today whatever time the test runs: the last assertion is
+	// about today's bar, and days are counted in UTC.
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(12 * time.Hour)
 	input := func(name string, public bool) store.MonitorInput {
 		return store.MonitorInput{Name: name, Slug: strings.ToLower(name), Kind: "simulated", SimulatedMode: "up", IntervalSeconds: 60,
 			TimeoutMS: 1000, ExpectedStatusMin: 200, ExpectedStatusMax: 299, FailureThreshold: 1, RecoveryThreshold: 1, Public: public}
