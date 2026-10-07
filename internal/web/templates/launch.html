@@ -1,5 +1,5 @@
 {{with .Card}}{{template "head" (printf "Starting %s · The Lighthouse" .Name)}}{{end}}
-<script src="/static/launch.js" defer></script>
+<script src="{{asset "launch.js"}}" defer></script>
 </head>
 <body>
 {{with .Card}}

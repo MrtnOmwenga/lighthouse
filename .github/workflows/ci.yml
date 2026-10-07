@@ -58,8 +58,8 @@ jobs:
             terraform -chdir="$stack" init -backend=false -input=false
             terraform -chdir="$stack" validate
           done
-      - name: Edge Worker parses
-        run: cp deploy/cloudrun/edge/worker.js "$RUNNER_TEMP/worker.mjs" && node --check "$RUNNER_TEMP/worker.mjs"
+      - name: Edge Worker tests
+        run: node --test deploy/cloudrun/edge/
       - name: Kubernetes manifests render and validate
         run: |
           curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar -xz kubeconform

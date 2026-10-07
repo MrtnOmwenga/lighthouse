@@ -5,6 +5,7 @@ package web
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/hex"
@@ -86,7 +87,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, authn *auth.Service, log *slog.L
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(staticFS, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheFor(time.Hour, http.FileServerFS(static))))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(http.FileServerFS(static))))
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /readyz", s.ready)
@@ -529,6 +530,46 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// cacheStatic lets a static file be kept for a year when its address carries a fingerprint of
+// its contents (?v=, see asset) or it is a font, which never changes; otherwise for an hour.
+func cacheStatic(next http.Handler) http.Handler {
+	long, short := cacheFor(365*24*time.Hour, next), cacheFor(time.Hour, next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("v") || strings.HasPrefix(r.URL.Path, "fonts/") {
+			long.ServeHTTP(w, r)
+			return
+		}
+		short.ServeHTTP(w, r)
+	})
+}
+
+// assetVersions is a short fingerprint of each static file's contents, worked out once.
+var assetVersions = func() map[string]string {
+	out := map[string]string{}
+	_ = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, err := staticFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(raw)
+		out[strings.TrimPrefix(path, "static/")] = hex.EncodeToString(sum[:6])
+		return nil
+	})
+	return out
+}()
+
+// asset is a static file's address with its fingerprint, so browsers and the edge can keep it
+// for a year and still pick up a new version the moment it ships.
+func asset(name string) string {
+	if v := assetVersions[name]; v != "" {
+		return "/static/" + name + "?v=" + v
+	}
+	return "/static/" + name
 }
 
 func cacheFor(d time.Duration, next http.Handler) http.Handler {

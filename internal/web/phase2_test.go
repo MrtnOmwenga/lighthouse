@@ -84,7 +84,7 @@ func TestStatusPageRefreshesWithoutReloading(t *testing.T) {
 	if !strings.Contains(body, `<noscript><meta http-equiv="refresh" content="60"></noscript>`) {
 		t.Error("the reload should be for browsers without JavaScript only")
 	}
-	if !strings.Contains(body, `src="/static/status.js"`) || !strings.Contains(body, `<main id="main" data-refresh="60">`) {
+	if !strings.Contains(body, `src="/static/status.js?v=`) || !strings.Contains(body, `<main id="main" data-refresh="60">`) {
 		t.Error("the page should refresh its main part with status.js")
 	}
 	e.browser().expect(200, "GET", "/static/status.js", nil)
@@ -202,5 +202,29 @@ func TestLinkPreviewsAndCrawlers(t *testing.T) {
 	}
 	if strings.Contains(sitemap, "/projects/tool") || strings.Contains(sitemap, "/go/") {
 		t.Error("sitemap lists a page that doesn't exist or shouldn't be crawled")
+	}
+}
+
+// Static files referenced by the pages carry a fingerprint of their contents and may be kept for
+// a year; the same file without one, for an hour.
+func TestStaticFilesAreFingerprinted(t *testing.T) {
+	t.Parallel()
+	e := start(t, nil)
+	b := e.browser()
+	body := b.expect(200, "GET", "/", nil)
+	i := strings.Index(body, `href="/static/style.css?v=`)
+	if i < 0 {
+		t.Fatal("the stylesheet's address should carry a fingerprint")
+	}
+	address := body[i+len(`href="`):]
+	address = address[:strings.Index(address, `"`)]
+	if resp, _ := b.do("GET", address, nil); resp.StatusCode != 200 || resp.Header.Get("Cache-Control") != "public, max-age=31536000" {
+		t.Fatalf("%s: %d %q", address, resp.StatusCode, resp.Header.Get("Cache-Control"))
+	}
+	if resp, _ := b.do("GET", "/static/style.css", nil); resp.Header.Get("Cache-Control") != "public, max-age=3600" {
+		t.Fatalf("without a fingerprint: %q", resp.Header.Get("Cache-Control"))
+	}
+	if resp, _ := b.do("GET", "/static/fonts/newsreader.woff2", nil); resp.Header.Get("Cache-Control") != "public, max-age=31536000" {
+		t.Fatalf("a font: %q", resp.Header.Get("Cache-Control"))
 	}
 }

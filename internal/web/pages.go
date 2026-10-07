@@ -19,7 +19,8 @@ var funcs = template.FuncMap{
 	"sparkline": func(m status.Monitor, now time.Time) template.HTML {
 		return status.Sparkline(m.Latency, 24*time.Hour, now)
 	},
-	"pct": pct,
+	"pct":   pct,
+	"asset": asset,
 	"ms": func(v *float64) string {
 		if v == nil {
 			return "–"

@@ -120,6 +120,8 @@ p { margin: 0; }
 .panel .actions { margin-top: 12px; }
 .panel .button { min-height: 40px; padding: 8px 12px; font-size: 15px; }
 
+/* Added by the edge when it serves a saved copy because the site isn't responding. */
+.edge-stale { margin: 0; padding: 10px var(--gutter); background: var(--claret); color: #fff; font: 600 15px var(--sans); }
 .delivered { border-top: 1px solid var(--rule); padding-top: 16px; }
 .delivered .label, .works-title { color: var(--claret); }
 .outcomes { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; font-size: 17px; line-height: 1.45; }
