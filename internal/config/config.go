@@ -63,6 +63,9 @@ type Config struct {
 	// issued by Google for this audience to this service account, and to no one else.
 	TickAudience string
 	TickCaller   string
+	// TickSlack: in external mode, how far ahead of its time a monitor counts as due (never more
+	// than a tenth of its interval), so calls that arrive a little early don't skip it.
+	TickSlack time.Duration
 }
 
 // ExternalSchedule reports whether checks are driven by calls to /internal/tick.
@@ -113,6 +116,7 @@ func Load(getenv func(string) string) (Config, error) {
 		RetentionDays:      integer("RETENTION_DAYS", 90, 1, 3650),
 		Schedule:           get("SCHEDULE", "loop"),
 		TickCaller:         get("TICK_CALLER", ""),
+		TickSlack:          time.Duration(integer("TICK_SLACK_SECONDS", 60, 0, 600)) * time.Second,
 	}
 	c.TickAudience = get("TICK_AUDIENCE", c.PublicURL+"/internal/tick")
 	if owner := get("OWNER_GITHUB_ID", "0"); owner != "0" {

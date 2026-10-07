@@ -52,6 +52,9 @@ type Server struct {
 	// Tick and TickVerifier serve POST /internal/tick when checks are scheduled from outside.
 	Tick         Ticker
 	TickVerifier *oidc.Verifier
+	// Drive, when checks are scheduled from outside, runs a tenant's due simulated checks as its
+	// console reads data, so a sandbox is checked while someone is watching it.
+	Drive func(ctx context.Context, tenantID string) int
 
 	pages     *template.Template
 	sandboxes *limiter // new sandboxes per client
@@ -210,9 +213,18 @@ func (s *Server) signedIn(h func(http.ResponseWriter, *http.Request, auth.Identi
 		if !ok {
 			return errUnauthenticated
 		}
+		if s.Drive != nil && r.Method == http.MethodGet {
+			ctx, cancel := context.WithTimeout(r.Context(), driveTimeout)
+			s.Drive(ctx, id.TenantID)
+			cancel()
+		}
 		return h(w, r, id)
 	})
 }
+
+// driveTimeout bounds the checks a console read may wait for; anything unfinished is picked up by
+// the next read.
+const driveTimeout = 3 * time.Second
 
 // inTenant runs fn in a transaction scoped to the caller's tenant.
 func (s *Server) inTenant(r *http.Request, id auth.Identity, fn func(pgx.Tx) error) error {

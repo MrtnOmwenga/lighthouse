@@ -93,6 +93,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	if cfg.ExternalSchedule() {
 		// Something else keeps time (Cloud Scheduler calling /internal/tick): an idle instance may
 		// get no CPU, so a clock of our own would stall.
+		scheduler.Slack = cfg.TickSlack
 		tick = externalTicker(pool, log, scheduler, keepChecks, cfg.SandboxTTL)
 		done <- struct{}{}
 		done <- struct{}{}
@@ -104,7 +105,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           handler(cfg, pool, log, owner, content, tick),
+		Handler:           handler(cfg, pool, log, owner, content, tick, scheduler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -129,12 +130,13 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	return err
 }
 
-func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker) http.Handler {
+func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker, scheduler *monitor.Scheduler) http.Handler {
 	srv := web.New(cfg, pool, auth.New(pool, cfg), log, owner)
 	srv.Site = content
 	if tick != nil {
 		srv.Tick = tick
 		srv.TickVerifier = &oidc.Verifier{Audience: cfg.TickAudience, Email: cfg.TickCaller}
+		srv.Drive = scheduler.RunTenant
 	}
 	return srv.Handler()
 }

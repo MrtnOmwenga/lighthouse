@@ -18,6 +18,7 @@ import (
 
 	"github.com/MrtnOmwenga/lighthouse/internal/auth"
 	"github.com/MrtnOmwenga/lighthouse/internal/config"
+	"github.com/MrtnOmwenga/lighthouse/internal/monitor"
 	"github.com/MrtnOmwenga/lighthouse/internal/site"
 	"github.com/MrtnOmwenga/lighthouse/internal/store"
 	"github.com/MrtnOmwenga/lighthouse/internal/testdb"
@@ -40,6 +41,12 @@ type env struct {
 // start runs Lighthouse against a fresh database, with a fake GitHub that knows two users:
 // the owner (code "owner") and a stranger (code "stranger").
 func start(t *testing.T, tweak func(*config.Config), content ...*site.Site) *env {
+	t.Helper()
+	return startWith(t, tweak, nil, content...)
+}
+
+// startWith is start, with a chance to adjust the server before it serves.
+func startWith(t *testing.T, tweak func(*config.Config), adjust func(*web.Server), content ...*site.Site) *env {
 	t.Helper()
 	db := testdb.New(t)
 	e := &env{t: t, db: db}
@@ -92,6 +99,9 @@ func start(t *testing.T, tweak func(*config.Config), content ...*site.Site) *env
 	srv2 := web.New(cfg, db.App, auth.New(db.App, cfg), log, e.owner)
 	if e.content != nil {
 		srv2.Site = e.content
+	}
+	if adjust != nil {
+		adjust(srv2)
 	}
 	handler = srv2.Handler()
 	return e
@@ -432,4 +442,41 @@ func TestIncidentPagination(t *testing.T) {
 		t.Fatalf("saw %d incidents over %d pages", len(seen), pages)
 	}
 	b.expect(422, "GET", "/api/incidents?cursor=garbage!", nil)
+}
+
+// With checks scheduled from outside, nothing runs between rounds: a sandbox is checked by its own
+// console reads, so a visitor can break a site and watch the incident open.
+func TestConsoleReadsDriveTheSandbox(t *testing.T) {
+	t.Parallel()
+	e := startWith(t, nil, func(s *web.Server) {
+		sched := &monitor.Scheduler{Pool: s.Pool, Prober: monitor.NewProber(), Workers: 4, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		s.Drive = sched.RunTenant
+	})
+	ctx := context.Background()
+	b := e.browser()
+	b.expect(201, "POST", "/api/sandbox", nil)
+
+	monitors := decode[[]store.Monitor](t, b.expect(200, "GET", "/api/monitors", nil))
+	var checkout store.Monitor
+	for _, m := range monitors {
+		if m.LastCheckedAt == nil {
+			t.Fatalf("%s wasn't checked by the read that listed it", m.Name)
+		}
+		if m.Name == "Checkout API" {
+			checkout = m
+		}
+	}
+
+	b.expect(200, "PUT", "/api/monitors/"+checkout.ID+"/mode", map[string]string{"mode": "down"})
+	for range checkout.FailureThreshold {
+		// Each read finds the monitor due again (its interval has passed) and checks it.
+		if _, err := e.db.Owner.Exec(ctx, "UPDATE monitors SET next_check_at = now() WHERE id = $1", checkout.ID); err != nil {
+			t.Fatal(err)
+		}
+		b.expect(200, "GET", "/api/monitors", nil)
+	}
+	got := decode[store.Monitor](t, b.expect(200, "GET", "/api/monitors/"+checkout.ID, nil))
+	if got.Health != "down" || got.OpenIncidentID == nil {
+		t.Fatalf("after %d failed checks: health %s, incident %v", checkout.FailureThreshold, got.Health, got.OpenIncidentID)
+	}
 }

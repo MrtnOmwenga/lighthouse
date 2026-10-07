@@ -166,7 +166,7 @@ func TestCrossTenantFunctions(t *testing.T) {
 	must(t, in(t, db, a, func(tx pgx.Tx) (err error) { ma, err = store.CreateMonitor(ctx, tx, a, simulated("a")); return }))
 	must(t, in(t, db, b, func(tx pgx.Tx) (err error) { mb, err = store.CreateMonitor(ctx, tx, b, simulated("b")); return }))
 
-	due, err := store.DueMonitors(ctx, db.App, 10)
+	due, err := store.DueMonitors(ctx, db.App, 10, 0)
 	must(t, err)
 	got := map[string]string{}
 	for _, d := range due {
@@ -177,11 +177,11 @@ func TestCrossTenantFunctions(t *testing.T) {
 	}
 
 	// Claiming is atomic: the second claim of the same due monitor finds nothing.
-	must(t, in(t, db, a, func(tx pgx.Tx) error { _, err := store.ClaimMonitor(ctx, tx, ma.ID); return err }))
-	if err := in(t, db, a, func(tx pgx.Tx) error { _, err := store.ClaimMonitor(ctx, tx, ma.ID); return err }); !errors.Is(err, store.ErrNotFound) {
+	must(t, in(t, db, a, func(tx pgx.Tx) error { _, err := store.ClaimMonitor(ctx, tx, ma.ID, 0); return err }))
+	if err := in(t, db, a, func(tx pgx.Tx) error { _, err := store.ClaimMonitor(ctx, tx, ma.ID, 0); return err }); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("second claim: %v", err)
 	}
-	if due, _ := store.DueMonitors(ctx, db.App, 10); len(due) != 1 || due[0].MonitorID != mb.ID {
+	if due, _ := store.DueMonitors(ctx, db.App, 10, 0); len(due) != 1 || due[0].MonitorID != mb.ID {
 		t.Fatalf("a claimed monitor isn't due any more: %v", due)
 	}
 
@@ -264,4 +264,45 @@ func TestDeletingAMonitorKeepsItsIncidents(t *testing.T) {
 		}
 		return nil
 	}))
+}
+
+// A schedule driven from outside arrives at fixed times: slack lets it take a monitor that is a
+// moment short of due, but never by more than a tenth of the monitor's interval.
+func TestDueWithSlack(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := testdb.New(t)
+	a := sandbox(t, db)
+	slow, fast := simulated("slow"), simulated("fast")
+	slow.IntervalSeconds, fast.IntervalSeconds = 900, 10
+	var ms, mf store.Monitor
+	must(t, in(t, db, a, func(tx pgx.Tx) (err error) { ms, err = store.CreateMonitor(ctx, tx, a, slow); return }))
+	must(t, in(t, db, a, func(tx pgx.Tx) (err error) { mf, err = store.CreateMonitor(ctx, tx, a, fast); return }))
+	// Both become due in five seconds.
+	if _, err := db.Owner.Exec(ctx, "UPDATE monitors SET next_check_at = now() + interval '5 seconds'"); err != nil {
+		t.Fatal(err)
+	}
+
+	if due, err := store.DueMonitors(ctx, db.App, 10, 0); err != nil || len(due) != 0 {
+		t.Fatalf("without slack nothing is due yet: %v %v", due, err)
+	}
+	due, err := store.DueMonitors(ctx, db.App, 10, time.Minute)
+	must(t, err)
+	if len(due) != 1 || due[0].MonitorID != ms.ID {
+		t.Fatalf("with a minute's slack: want only the 15-minute monitor (the 10-second one may be taken 1 s early), got %v", due)
+	}
+
+	claim := func(id string, slack time.Duration) error {
+		return in(t, db, a, func(tx pgx.Tx) error { _, err := store.ClaimMonitor(ctx, tx, id, slack); return err })
+	}
+	if err := claim(ms.ID, 0); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("claiming early without slack: %v", err)
+	}
+	if err := claim(mf.ID, time.Minute); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("claiming a 10-second monitor 5 s early: %v", err)
+	}
+	must(t, claim(ms.ID, time.Minute))
+	if err := claim(ms.ID, time.Minute); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a claimed monitor is a full interval away, beyond any slack: %v", err)
+	}
 }

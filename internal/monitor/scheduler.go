@@ -23,6 +23,10 @@ type Scheduler struct {
 	Workers int
 	Log     *slog.Logger
 	Tick    time.Duration // how often to look for due monitors (default 1s)
+	// Slack treats a monitor as due this long ahead of time (never more than a tenth of its
+	// interval). Zero for Run, which looks every second; set it when rounds are started from
+	// outside at fixed times, where a monitor a moment short of due would wait a whole period.
+	Slack time.Duration
 	// Notify, if set, hears about incidents opened or resolved automatically, after the change
 	// is committed. It runs on the checking worker, so it should be quick or time-limited.
 	Notify func(ctx context.Context, c Change)
@@ -62,11 +66,62 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-// RunOnce checks everything due now and returns when those checks are recorded. Tests use it.
+// RunOnce checks everything due now and returns when those checks are recorded: the whole of a
+// schedule driven from outside. Due monitors are listed a batch at a time, so it keeps going until
+// a batch holds nothing new; each monitor is checked at most once, however short its interval and
+// however long the round takes.
 func (s *Scheduler) RunOnce(ctx context.Context) int {
 	sem := make(chan struct{}, max(s.Workers, 1))
 	var wg sync.WaitGroup
-	n := s.dispatch(ctx, sem, &wg)
+	seen := map[string]bool{}
+	for ctx.Err() == nil {
+		due, err := store.DueMonitors(ctx, s.Pool, cap(sem)*4, s.Slack)
+		if err != nil {
+			if ctx.Err() == nil {
+				s.Log.Error("listing due monitors", "err", err)
+			}
+			break
+		}
+		var fresh []store.Due
+		for _, d := range due {
+			if !seen[d.MonitorID] {
+				seen[d.MonitorID] = true
+				fresh = append(fresh, d)
+			}
+		}
+		if len(fresh) == 0 {
+			break
+		}
+		s.start(ctx, fresh, sem, &wg)
+		wg.Wait()
+	}
+	wg.Wait()
+	return len(seen)
+}
+
+// RunTenant checks one tenant's simulated monitors that are due now, and returns when they are
+// recorded. With a schedule driven from outside, nothing else would check a sandbox between
+// rounds; the console calls this as it polls, so a visitor watching their sandbox keeps it
+// running. Simulated checks send no traffic and take no time, so this is safe on a request.
+func (s *Scheduler) RunTenant(ctx context.Context, tenantID string) int {
+	var ids []string
+	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
+		ids, err = store.DueSimulated(ctx, tx)
+		return err
+	})
+	if err != nil {
+		if ctx.Err() == nil {
+			s.Log.Error("listing a tenant's due monitors", "err", err)
+		}
+		return 0
+	}
+	due := make([]store.Due, len(ids))
+	for i, id := range ids {
+		due[i] = store.Due{MonitorID: id, TenantID: tenantID}
+	}
+	sem := make(chan struct{}, max(s.Workers, 1))
+	var wg sync.WaitGroup
+	n := s.start(ctx, due, sem, &wg)
 	wg.Wait()
 	return n
 }
@@ -74,13 +129,17 @@ func (s *Scheduler) RunOnce(ctx context.Context) int {
 // dispatch starts a check for each due monitor, as many at a time as there are workers, waiting
 // for a free worker when all are busy.
 func (s *Scheduler) dispatch(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup) int {
-	due, err := store.DueMonitors(ctx, s.Pool, cap(sem)*4)
+	due, err := store.DueMonitors(ctx, s.Pool, cap(sem)*4, s.Slack)
 	if err != nil {
 		if ctx.Err() == nil {
 			s.Log.Error("listing due monitors", "err", err)
 		}
 		return 0
 	}
+	return s.start(ctx, due, sem, wg)
+}
+
+func (s *Scheduler) start(ctx context.Context, due []store.Due, sem chan struct{}, wg *sync.WaitGroup) int {
 	started := 0
 	for _, d := range due {
 		select {
@@ -107,7 +166,7 @@ func (s *Scheduler) Check(ctx context.Context, tenantID, monitorID string) error
 	var m store.Monitor
 	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) error {
 		var err error
-		m, err = store.ClaimMonitor(ctx, tx, monitorID)
+		m, err = store.ClaimMonitor(ctx, tx, monitorID, s.Slack)
 		return err
 	})
 	if errors.Is(err, store.ErrNotFound) {
