@@ -61,20 +61,21 @@ type Server struct {
 	// are saved. Without it those endpoints don't exist.
 	Checks *monitor.Scheduler
 
-	pages     *template.Template
-	status    statusCache
-	sandboxes *limiter // new sandboxes per client
-	writes    *limiter // API writes per client
+	pages  *template.Template
+	status statusCache
+	writes *limiter // API writes per client
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, authn *auth.Service, log *slog.Logger, ownerTenant string) *Server {
+	if authn.Log == nil {
+		authn.Log = log
+	}
 	return &Server{
 		Config: cfg, Pool: pool, Auth: authn, Log: log, OwnerTenant: ownerTenant, Now: time.Now,
 		Site:      &site.Site{Stories: map[string]*site.Story{}},
 		Readiness: site.NewReadiness(monitor.NewProber()),
 		Analytics: analytics.New(pool, ownerTenant, cfg.PublicURL),
 		pages:     template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
-		sandboxes: newLimiter(rate.Limit(float64(max(cfg.SandboxLimit, 1))/3600), min(max(cfg.SandboxLimit, 1), 3)),
 		writes:    newLimiter(rate.Every(200*time.Millisecond), 20),
 	}
 }
@@ -126,6 +127,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.signedIn(s.me))
 	mux.HandleFunc("GET /api/sign-in-options", s.signInOptions)
 	mux.HandleFunc("GET /api/session", s.session)
+	mux.HandleFunc("GET /api/security", s.signedIn(s.security))
+	mux.HandleFunc("DELETE /api/sessions/{id}", s.signedIn(s.endSession))
+	mux.HandleFunc("POST /api/sessions/end-others", s.signedIn(s.endOtherSessions))
 
 	// The console: a single-page app, embedded in the binary.
 	mux.Handle("GET /console/", s.console())
@@ -199,7 +203,7 @@ func (s *Server) githubCallback(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrNotOwner):
 		s.renderError(w, http.StatusForbidden, "This is Martin's console", "Only the owner can sign in here. You can still look around: the status page is public.")
 	default:
-		s.Log.Warn("github sign-in failed", "err", err)
+		s.Auth.Security("sign_in_failed", "err", err.Error())
 		s.renderError(w, http.StatusBadRequest, "Sign-in failed", "GitHub sign-in didn't complete. Please try again.")
 	}
 }
@@ -211,7 +215,12 @@ func (s *Server) createSandbox(w http.ResponseWriter, r *http.Request) error {
 		left := int(time.Until(id.Expires).Minutes())
 		return writeJSON(w, http.StatusOK, map[string]any{"role": "sandbox", "expiresInMinutes": max(left, 0), "resumed": true})
 	}
-	if !s.sandboxes.allow(s.clientIP(r)) {
+	allowed, err := s.sandboxAllowed(r)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		s.Auth.Security("rate_limited", "what", "sandbox")
 		return errTooMany
 	}
 	if err := s.Auth.Sandbox(w, r); err != nil {
@@ -436,6 +445,7 @@ func (s *Server) sameOrigin(next http.Handler) http.Handler {
 func (s *Server) limitWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && !s.writes.allow(s.clientIP(r)) {
+			s.Auth.Security("rate_limited", "what", "writes", "path", r.URL.Path)
 			s.errs(func(http.ResponseWriter, *http.Request) error { return errTooMany })(w, r)
 			return
 		}
@@ -458,6 +468,7 @@ func (s *Server) edgeOnly(next http.Handler) http.Handler {
 			return
 		}
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Edge-Secret")), secret) != 1 {
+			s.Auth.Security("edge_bypassed", "path", r.URL.Path)
 			http.NotFound(w, r)
 			return
 		}

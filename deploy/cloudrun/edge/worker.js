@@ -2,7 +2,8 @@
 // the request is forwarded as is (WebSocket upgrades included), plus:
 //   X-Client-IP      the visitor's address, which Cloudflare knows and the origin otherwise wouldn't
 //   X-Forwarded-Host the hostname the visitor used
-//   X-Edge-Secret    proof the request came through here (Lighthouse refuses requests without it)
+//   X-Edge-Secret    proof the request came through here, sent only to the hosts that check it
+//                    (SECRET_HOSTS: Lighthouse, which refuses requests without it)
 // Headers a visitor sends with those names are replaced, never passed through.
 
 const STATIC = /\.(?:js|mjs|css|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf)$/i;
@@ -19,7 +20,10 @@ export default {
     headers.set("X-Client-IP", request.headers.get("CF-Connecting-IP") ?? "");
     headers.set("X-Forwarded-Host", url.hostname);
     headers.set("X-Forwarded-Proto", "https");
-    headers.set("X-Edge-Secret", env.EDGE_SECRET);
+    // The secret goes only to the origins that verify it: sending it to the others would hand
+    // them the means to pass as the edge.
+    headers.delete("X-Edge-Secret");
+    if (JSON.parse(env.SECRET_HOSTS).includes(url.hostname)) headers.set("X-Edge-Secret", env.EDGE_SECRET);
 
     // Static files are cached at the edge for an hour, so repeat downloads never reach Google
     // (whose free tier includes only 1 GB a month of outbound data). Everything else, including

@@ -9,6 +9,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/incidents/:id', name: 'incident', component: () => import('./views/IncidentDetail.vue'), props: true },
   { path: '/status', name: 'status', component: () => import('./views/StatusPreview.vue') },
   { path: '/readers', name: 'readers', component: () => import('./views/Readers.vue'), meta: { owner: true } },
+  { path: '/security', name: 'security', component: () => import('./views/Security.vue'), meta: { owner: true } },
   { path: '/:rest(.*)*', redirect: '/' },
 ];
 

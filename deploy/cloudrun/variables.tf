@@ -68,3 +68,9 @@ variable "tick_schedule" {
   default     = "*/15 * * * *"
   description = "How often Cloud Scheduler asks Lighthouse to run due checks. Neon's free plan allows 100 compute-hours a month per project; ticks every 15 minutes let the database sleep most of the time."
 }
+
+variable "alert_email" {
+  type        = string
+  default     = ""
+  description = "Where security alerts go (a refused sign-in, a rejected scheduler call). Empty: no alerts."
+}
