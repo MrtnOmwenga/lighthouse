@@ -128,7 +128,12 @@ jobs:
         run: |
           previous=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.latestReadyRevisionName)')
           echo "previous=$previous" >> "$GITHUB_OUTPUT"
-          gcloud run services update "$SERVICE" --region "$REGION" --image "${{ steps.copy.outputs.ref }}" --no-traffic --tag candidate --quiet
+          gcloud run services update "$SERVICE" --region "$REGION" --image "${{ steps.copy.outputs.ref }}" --no-traffic --quiet
+          # Tagged afterwards, as a traffic change: passing --tag to the update would write the
+          # revision's name into the service's template, and the next Terraform change to the
+          # service would then be refused for reusing that name.
+          candidate=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.latestCreatedRevisionName)')
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --set-tags "candidate=$candidate" --quiet
           url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
           echo "url=https://candidate---${url#https://}" >> "$GITHUB_OUTPUT"
       - name: Test the new revision before it serves anyone
