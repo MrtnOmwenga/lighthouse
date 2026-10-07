@@ -103,7 +103,8 @@ export interface Report {
   summary: { views: number; visitors: number; engagedVisitors: number };
   pages: { path: string; project: string | null; views: number; visitors: number; engagedVisitors: number; medianEngagedSeconds: number }[];
   projects: { project: string; views: number; visitors: number; engagedVisitors: number; medianEngagedSeconds: number; launches: number; opens: number }[];
-  refs: { ref: string; visitors: number; firstSeen: string; lastSeen: string; views: number; engagedSeconds: number; pages: string[]; demosOpened: number }[];
+  refs: { ref: string; visitors: number; firstSeen: string; lastSeen: string; views: number; engagedSeconds: number; pages: string[]; demosOpened: number; actions: string[] }[];
+  actions: { label: string; visitors: number }[];
   referrers: { label: string; visitors: number }[];
   devices: { label: string; visitors: number }[];
 }

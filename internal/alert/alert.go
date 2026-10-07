@@ -186,3 +186,18 @@ func Compose(c monitor.Change, publicURL string) (subject, body string) {
 	b.WriteString("\n— Lighthouse\n")
 	return subject, b.String()
 }
+
+// TagOpened emails the owner that a link carrying a ?ref= tag was opened (the first time that
+// day): which tag, where it landed, on what kind of device. Nothing identifies the visitor.
+func TagOpened(m *Mailer, publicURL string, log *slog.Logger) func(ctx context.Context, tag, page, device string) {
+	return func(ctx context.Context, tag, page, device string) {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
+		defer cancel()
+		subject := fmt.Sprintf("Lighthouse: the link tagged %q was opened", tag)
+		body := fmt.Sprintf("Someone opened the link tagged %q.\n\nLanded on: %s%s\nDevice: %s\n\nWhat they went on to read, and for how long, is on the Readers screen:\n%s/console/readers\n\nYou are told once a day per tag.\n",
+			tag, publicURL, page, device, publicURL)
+		if err := m.Send(ctx, subject, body); err != nil {
+			log.Error("tag-opened email", "tag", tag, "err", err)
+		}
+	}
+}

@@ -1,0 +1,73 @@
+package web_test
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/google/uuid"
+
+	"github.com/MrtnOmwenga/lighthouse/internal/config"
+	"github.com/MrtnOmwenga/lighthouse/internal/web"
+)
+
+// A tagged link's report shows what its visitor did, counts nothing twice, and the owner is told
+// the first time each day that the link is opened.
+func TestTaggedVisitsAreReportedAndAnnounced(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var told []string
+	e := startWith(t, func(c *config.Config) { c.DevLogin = true }, func(s *web.Server) {
+		s.Analytics.TagOpened = func(_ context.Context, tag, page, device string) {
+			mu.Lock()
+			told = append(told, tag+" "+page+" "+device)
+			mu.Unlock()
+		}
+	})
+	b := e.browser()
+	hit := func(path string, body map[string]string) { b.hit(path, body, nil) }
+	first, second := uuid.NewString(), uuid.NewString()
+	hit("/api/a/view", map[string]string{"id": first, "path": "/", "ref": "acme-12"})
+	for _, name := range []string{"cv_download", "outbound_github", "contact_email", "cv_download", "not_an_event"} {
+		hit("/api/a/event", map[string]string{"id": first, "name": name})
+	}
+	hit("/api/a/view", map[string]string{"id": second, "path": "/projects/redacted"})
+	hit("/api/a/event", map[string]string{"id": second, "name": "read_to_end"})
+	// The same link opened again that day: counted, not announced again.
+	hit("/api/a/view", map[string]string{"id": uuid.NewString(), "path": "/", "ref": "acme-12"})
+
+	mu.Lock()
+	if len(told) != 1 || told[0] != "acme-12 / desktop" {
+		t.Fatalf("the owner should be told once: %v", told)
+	}
+	mu.Unlock()
+
+	owner := e.browser()
+	owner.expect(200, "POST", "/auth/dev", nil)
+	rep := decode[struct {
+		Refs []struct {
+			Ref     string   `json:"ref"`
+			Views   int      `json:"views"`
+			Actions []string `json:"actions"`
+		} `json:"refs"`
+		Actions []struct {
+			Label    string `json:"label"`
+			Visitors int    `json:"visitors"`
+		} `json:"actions"`
+	}](t, owner.expect(200, "GET", "/api/analytics", nil))
+	if len(rep.Refs) != 1 || rep.Refs[0].Views != 3 {
+		t.Fatalf("three views, however many things were done on them: %+v", rep.Refs)
+	}
+	if got := strings.Join(rep.Refs[0].Actions, ","); got != "contact_email,cv_download,outbound_github,read_to_end" {
+		t.Fatalf("what the tagged visitor did: %s", got)
+	}
+	if len(rep.Actions) != 4 {
+		t.Fatalf("site-wide actions: %+v", rep.Actions)
+	}
+	for _, a := range rep.Actions {
+		if a.Visitors != 1 {
+			t.Fatalf("one visitor did each: %+v", rep.Actions)
+		}
+	}
+}

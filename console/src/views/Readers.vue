@@ -32,6 +32,17 @@ async function setExcluded(value: boolean) {
   }
 }
 
+const actions: Record<string, string> = {
+  demo_open: 'opened a demo',
+  intro_skip: 'skipped a demo\'s introduction',
+  cv_download: 'opened the CV',
+  outbound_github: 'went to GitHub',
+  outbound_linkedin: 'went to LinkedIn',
+  contact_email: 'started an email',
+  read_to_end: 'read a story to the end',
+};
+const did = (name: string) => actions[name] ?? name;
+
 const company = ref('');
 const target = ref('/');
 const tag = computed(() => slugify(company.value));
@@ -89,16 +100,23 @@ async function copy() {
       <p v-if="!report.refs.length" class="caption">No tagged link has been opened yet.</p>
       <div v-else class="table-wrap">
         <table class="data console-table">
-          <thead><tr><th scope="col">Tag</th><th scope="col">Last seen</th><th scope="col" class="num">Pages</th><th scope="col" class="num">Reading</th><th scope="col" class="num">Demos</th><th scope="col">Read</th></tr></thead>
+          <thead><tr><th scope="col">Tag</th><th scope="col">Last seen</th><th scope="col" class="num">Pages</th><th scope="col" class="num">Reading</th><th scope="col" class="num">Demos</th><th scope="col">Did</th><th scope="col">Read</th></tr></thead>
           <tbody>
             <tr v-for="r in report.refs" :key="r.ref">
               <td class="name">{{ r.ref }}</td><td>{{ when(r.lastSeen) }}</td><td class="num">{{ r.views }}</td>
               <td class="num">{{ duration(r.engagedSeconds) }}</td><td class="num">{{ r.demosOpened }}</td>
+              <td>{{ r.actions.map(did).join(', ') || '–' }}</td>
               <td class="wrap-cell">{{ r.pages.join(', ') }}</td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <h2 class="section-title rule-top">What visitors did</h2>
+      <p v-if="!report.actions.length" class="caption">Nothing yet beyond reading.</p>
+      <table v-else class="data console-table"><tbody>
+        <tr v-for="a in report.actions" :key="a.label"><td>{{ did(a.label) }}</td><td class="num">{{ a.visitors }}</td></tr>
+      </tbody></table>
 
       <h2 class="section-title rule-top">Projects</h2>
       <div class="table-wrap">

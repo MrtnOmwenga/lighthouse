@@ -81,13 +81,13 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	scheduler := &monitor.Scheduler{Pool: pool, Prober: monitor.NewProber(), Workers: cfg.CheckWorkers, Log: log,
 		Confirm: cfg.ConfirmAfter, Warm: cfg.WarmAbove}
+	var tagOpened func(ctx context.Context, tag, page, device string)
 	if len(cfg.AlertTo) > 0 {
-		notifier := &alert.Notifier{
-			Mailer: &alert.Mailer{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
-				From: cfg.AlertFrom, To: cfg.AlertTo},
-			Tenant: owner, PublicURL: cfg.PublicURL, Log: log,
-		}
+		mailer := &alert.Mailer{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+			From: cfg.AlertFrom, To: cfg.AlertTo}
+		notifier := &alert.Notifier{Mailer: mailer, Tenant: owner, PublicURL: cfg.PublicURL, Log: log}
 		scheduler.Notify = notifier.Notify
+		tagOpened = alert.TagOpened(mailer, cfg.PublicURL, log)
 		log.Info("email alerts on", "to", len(cfg.AlertTo))
 	}
 	keepChecks := time.Duration(cfg.RetentionDays) * 24 * time.Hour
@@ -111,7 +111,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           handler(cfg, pool, log, owner, content, tick, scheduler, registry),
+		Handler:           handler(cfg, pool, log, owner, content, tick, scheduler, registry, tagOpened),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -136,11 +136,13 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	return err
 }
 
-func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker, scheduler *monitor.Scheduler, registry *metrics.Registry) http.Handler {
+func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker, scheduler *monitor.Scheduler, registry *metrics.Registry,
+	tagOpened func(ctx context.Context, tag, page, device string)) http.Handler {
 	srv := web.New(cfg, pool, auth.New(pool, cfg), log, owner)
 	srv.Site = content
 	srv.Checks = scheduler
 	srv.Metrics = registry
+	srv.Analytics.TagOpened = tagOpened
 	if tick != nil {
 		srv.Tick = tick
 		srv.TickVerifier = &oidc.Verifier{Audience: cfg.TickAudience, Email: cfg.TickCaller}
