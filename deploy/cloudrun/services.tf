@@ -33,6 +33,9 @@ locals {
       SMTP_USERNAME = var.smtp_username
       ALERT_FROM    = var.smtp_username
       ALERT_TO      = var.smtp_username == "" ? "" : var.alert_email
+      # Where each round of checks reports its figures (grafana.tf says what is done with them).
+      METRICS_PUSH_URL  = var.metrics_push_url
+      METRICS_PUSH_USER = var.metrics_push_user
     }
     redacted = {
       NODE_ENV              = "production"
@@ -55,6 +58,7 @@ locals {
       PGPASSWORD           = google_secret_manager_secret.s["lighthouse-db-app"].secret_id
       GITHUB_CLIENT_SECRET = google_secret_manager_secret.s["lighthouse-github-secret"].secret_id
       SMTP_PASSWORD        = google_secret_manager_secret.s["lighthouse-smtp-password"].secret_id
+      METRICS_PUSH_TOKEN   = google_secret_manager_secret.s["lighthouse-metrics-token"].secret_id
     }
     redacted  = { PGPASSWORD = google_secret_manager_secret.s["redacted-db-app"].secret_id }
     ghostchat = { MONGODB_URI = google_secret_manager_secret.s["ghostchat-mongodb-uri"].secret_id }
