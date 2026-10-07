@@ -31,9 +31,13 @@ usePoll(refresh, 5000);
 
 async function more() {
   if (!next.value) return;
-  const page = await api.incidents(next.value);
-  incidents.value.push(...page.incidents);
-  next.value = page.next;
+  try {
+    const page = await api.incidents(next.value);
+    incidents.value.push(...page.incidents);
+    next.value = page.next;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load older incidents.';
+  }
 }
 
 const monitorName = (id: string | null) => monitors.value.find((m) => m.id === id)?.name;

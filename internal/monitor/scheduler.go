@@ -126,6 +126,50 @@ func (s *Scheduler) RunTenant(ctx context.Context, tenantID string) int {
 	return n
 }
 
+// ErrPaused is returned when a check is asked for on a paused monitor.
+var ErrPaused = errors.New("monitor is paused")
+
+// CheckNow checks one monitor at once, whatever its schedule, records the result like any other
+// check, and returns it. The next scheduled check is a full interval later.
+func (s *Scheduler) CheckNow(ctx context.Context, tenantID, monitorID string) (store.Check, error) {
+	var none store.Check
+	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) error {
+		m, err := store.GetMonitor(ctx, tx, monitorID)
+		if err != nil {
+			return err
+		}
+		if m.Paused {
+			return ErrPaused
+		}
+		return store.MakeDue(ctx, tx, monitorID)
+	})
+	if err != nil {
+		return none, err
+	}
+	if err := s.Check(ctx, tenantID, monitorID); err != nil {
+		return none, err
+	}
+	var checks []store.Check
+	err = store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
+		checks, err = store.RecentChecks(ctx, tx, monitorID, 0, 1)
+		return err
+	})
+	if err != nil || len(checks) == 0 {
+		return none, err
+	}
+	return checks[0], nil
+}
+
+// Try probes with settings that haven't been saved, and records nothing. It goes through the same
+// prober as a scheduled check, so the same address guard applies.
+func (s *Scheduler) Try(ctx context.Context, in store.MonitorInput) Result {
+	return s.probe(ctx, store.Monitor{
+		Kind: in.Kind, URL: in.URL, SimulatedMode: in.SimulatedMode, TimeoutMS: in.TimeoutMS,
+		ExpectedStatusMin: in.ExpectedStatusMin, ExpectedStatusMax: in.ExpectedStatusMax, ExpectedText: in.ExpectedText,
+		AllowPrivateNetwork: in.AllowPrivateNetwork,
+	})
+}
+
 // dispatch starts a check for each due monitor, as many at a time as there are workers, waiting
 // for a free worker when all are busy.
 func (s *Scheduler) dispatch(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup) int {
