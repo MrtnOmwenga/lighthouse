@@ -16,11 +16,11 @@ until the daily summaries of item 36.
 
 | Phase | Theme | Items | State |
 |---|---|---|---|
-| 1 | **Fix what is broken on the live site** | 27, 28, 29, 30 | Built: pull request #19 |
-| 2 | **Clean numbers and first impressions:** analytics that count real readers, link previews, a status page that survives the database | 48, 49, 50, 60, 61, 62 | Built: pull request #21 |
-| 3 | **A finished console** | 52, 53, 56, 58, 59, 35, 41, 54, 57 | Built: pull request #22 |
-| 4 | **A safer pipeline** | 1, 2, 3, 4, 5, 6, 7, 9, 37 | Next |
-| 5 | **Security and sign-in** | 38, 39, 40, 42, 17, 16, 25, 26 | |
+| 1 | **Fix what is broken on the live site** | 27, 28, 29, 30 | Live (#19) |
+| 2 | **Clean numbers and first impressions:** analytics that count real readers, link previews, a status page that survives the database | 48, 49, 50, 60, 61, 62 | Live (#21) |
+| 3 | **A finished console** | 52, 53, 56, 58, 59, 35, 41, 54, 57 | Live (#22) |
+| 4 | **A safer pipeline** | 1, 2, 3, 4, 5, 6, 7, 9, 37 | Live (#26); the same pipeline changes for RBAC-API and GhostChat come with their reviews |
+| 5 | **Security and sign-in** | 38, 39, 40, 42, 17, 25 (16 moves to the demos' own reviews; 26 goes with Infisical in phase 8) | Next |
 | 6 | **Better monitoring** | 33, 32 (replaces 11), 36, 10, 34, 13 | |
 | 7 | **Analytics for the job search** | 43, 44, 45, 46, 51 | |
 | 8 | **Resilience and operations** | 12, 19, 20, 8, 22, 18, 14, 15, 21 | |
