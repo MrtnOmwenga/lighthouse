@@ -21,9 +21,21 @@ locals {
       GITHUB_CLIENT_ID       = var.github_client_id
       OWNER_GITHUB_ID        = tostring(var.owner_github_id)
       SCHEDULE               = "external"
+      CONFIRM_SECONDS        = "15"   # a failed check is re-checked 15 s later, so an outage is confirmed within a minute
+      WARM_THRESHOLD_MS      = "1000" # a slower answer is a demo waking up: recorded apart, then checked again
       TICK_CALLER            = google_service_account.scheduler.email
       DATABASE_URL           = local.lighthouse_db
       EDGE_SECRET            = random_password.edge.result
+      # Incident emails: sent from smtp_username to alert_email when a public monitor goes down
+      # or recovers. Lighthouse sends none unless ALERT_TO is set.
+      SMTP_HOST     = var.smtp_username == "" ? "" : var.smtp_host
+      SMTP_PORT     = "587"
+      SMTP_USERNAME = var.smtp_username
+      ALERT_FROM    = var.smtp_username
+      ALERT_TO      = var.smtp_username == "" ? "" : var.alert_email
+      # Where each round of checks reports its figures (grafana.tf says what is done with them).
+      METRICS_PUSH_URL  = var.metrics_push_url
+      METRICS_PUSH_USER = var.metrics_push_user
     }
     redacted = {
       NODE_ENV              = "production"
@@ -45,6 +57,8 @@ locals {
     lighthouse = {
       PGPASSWORD           = google_secret_manager_secret.s["lighthouse-db-app"].secret_id
       GITHUB_CLIENT_SECRET = google_secret_manager_secret.s["lighthouse-github-secret"].secret_id
+      SMTP_PASSWORD        = google_secret_manager_secret.s["lighthouse-smtp-password"].secret_id
+      METRICS_PUSH_TOKEN   = google_secret_manager_secret.s["lighthouse-metrics-token"].secret_id
     }
     redacted  = { PGPASSWORD = google_secret_manager_secret.s["redacted-db-app"].secret_id }
     ghostchat = { MONGODB_URI = google_secret_manager_secret.s["ghostchat-mongodb-uri"].secret_id }
@@ -64,9 +78,12 @@ resource "google_cloud_run_v2_service" "app" {
   deletion_protection = false
 
   template {
-    service_account                  = google_service_account.run[each.key].email
-    timeout                          = local.shape[each.key].timeout # WebSockets stay open this long, then reconnect
-    session_affinity                 = true
+    service_account = google_service_account.run[each.key].email
+    timeout         = local.shape[each.key].timeout # WebSockets stay open this long, then reconnect
+    # Off: with one instance there is nothing to stick to, and turning it on makes Google's front
+    # end set a 30-day cookie (GAESA) on every visitor, which the privacy page says doesn't happen.
+    # It becomes useful, for the demos' WebSockets, only with more than one instance.
+    session_affinity                 = false
     max_instance_request_concurrency = 250
 
     scaling {

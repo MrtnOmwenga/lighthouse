@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { session, signOut } from './session';
+import { expire, session, signOut } from './session';
 import SandboxBanner from './components/SandboxBanner.vue';
 
 const router = useRouter();
 const owner = computed(() => session.me?.role === 'owner');
+
+// Bumped when the sandbox is reset, so the screen in view starts again from fresh data.
+const generation = ref(0);
+function ended() {
+  if (expire()) router.replace({ name: 'welcome' });
+}
 
 async function leave() {
   await signOut();
@@ -15,7 +21,7 @@ async function leave() {
 
 <template>
   <a class="sr-only" href="#main">Skip to content</a>
-  <SandboxBanner v-if="session.me?.role === 'sandbox'" :expires-at="session.me.expiresAt" />
+  <SandboxBanner v-if="session.me?.role === 'sandbox'" :expires-at="session.me.expiresAt" @reset="generation++" @ended="ended" />
   <header class="masthead">
     <div class="wrap">
       <a class="brand" href="/">
@@ -34,12 +40,13 @@ async function leave() {
         <RouterLink to="/incidents" :aria-current="$route.path.startsWith('/incidents') ? 'page' : undefined">Incidents</RouterLink>
         <RouterLink to="/status" :aria-current="$route.path === '/status' ? 'page' : undefined">Status page</RouterLink>
         <RouterLink v-if="owner" to="/readers" :aria-current="$route.path === '/readers' ? 'page' : undefined">Readers</RouterLink>
+        <RouterLink v-if="owner" to="/security" :aria-current="$route.path === '/security' ? 'page' : undefined">Security</RouterLink>
         <button type="button" class="button" @click="leave">{{ owner ? 'Sign out' : 'Leave sandbox' }}</button>
       </nav>
     </div>
   </header>
   <main id="main" class="wrap console-main">
-    <RouterView />
+    <RouterView :key="generation" />
   </main>
   <footer class="foot">
     <div class="wrap">

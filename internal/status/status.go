@@ -62,9 +62,19 @@ type Incident struct {
 
 // Build assembles the status page for a tenant.
 func Build(ctx context.Context, pool *pgxpool.Pool, tenantID string, now time.Time) (Page, error) {
+	return build(ctx, pool, tenantID, now, true)
+}
+
+// BuildAll is Build over everything the tenant has, private monitors and incidents included: the
+// tenant's own view of its figures, for its console.
+func BuildAll(ctx context.Context, pool *pgxpool.Pool, tenantID string, now time.Time) (Page, error) {
+	return build(ctx, pool, tenantID, now, false)
+}
+
+func build(ctx context.Context, pool *pgxpool.Pool, tenantID string, now time.Time, publicOnly bool) (Page, error) {
 	page := Page{UpdatedAt: now, Monitors: []Monitor{}, Active: []Incident{}, Recent: []Incident{}}
 	err := store.WithTenant(ctx, pool, tenantID, func(tx pgx.Tx) error {
-		monitors, err := store.ListMonitors(ctx, tx, true)
+		monitors, err := store.ListMonitors(ctx, tx, publicOnly)
 		if err != nil {
 			return err
 		}
@@ -94,12 +104,12 @@ func Build(ctx context.Context, pool *pgxpool.Pool, tenantID string, now time.Ti
 			})
 		}
 
-		incidents, err := store.ListIncidents(ctx, tx, store.IncidentFilter{Since: now.AddDate(0, 0, -14), PublicOnly: true, Limit: 50})
+		incidents, err := store.ListIncidents(ctx, tx, store.IncidentFilter{Since: now.AddDate(0, 0, -14), PublicOnly: publicOnly, Limit: 50})
 		if err != nil {
 			return err
 		}
 		for _, inc := range incidents {
-			events, err := store.Events(ctx, tx, inc.ID, true)
+			events, err := store.Events(ctx, tx, inc.ID, publicOnly)
 			if err != nil {
 				return err
 			}

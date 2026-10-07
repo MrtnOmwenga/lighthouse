@@ -54,6 +54,9 @@ type Config struct {
 	SandboxLimit  int           // new sandboxes per client per hour
 	RetentionDays int           // how long check results are kept
 
+	// StatusCache is how long the public status is reused before it is built again; every public
+	// page shows it. Zero builds it for each request.
+	StatusCache time.Duration
 	// Schedule is how checks get run. "loop" (the default): Lighthouse runs its own clock, which
 	// needs a process that's always running. "external": something else calls POST /internal/tick
 	// (Cloud Scheduler, on Cloud Run, where an idle instance gets no CPU); each call runs the checks
@@ -63,6 +66,18 @@ type Config struct {
 	// issued by Google for this audience to this service account, and to no one else.
 	TickAudience string
 	TickCaller   string
+	// TickSlack: in external mode, how far ahead of its time a monitor counts as due (never more
+	// than a tenth of its interval), so calls that arrive a little early don't skip it.
+	TickSlack time.Duration
+	// MetricsPushURL, with a user and token: where a round of checks reports its figures when it
+	// ends (InfluxDB line protocol, as Grafana Cloud accepts). Empty: nothing is sent.
+	MetricsPushURL, MetricsPushUser, MetricsPushToken string
+	// ConfirmAfter: how soon to re-check an HTTP monitor whose state has started to change, so an
+	// outage is confirmed in about a minute. Zero waits for the monitor's next scheduled check.
+	ConfirmAfter time.Duration
+	// WarmAbove: a passing HTTP check slower than this is taken to have woken a sleeping service,
+	// recorded as a warm-up, and repeated at once. Zero records every check as it comes.
+	WarmAbove time.Duration
 }
 
 // ExternalSchedule reports whether checks are driven by calls to /internal/tick.
@@ -111,8 +126,15 @@ func Load(getenv func(string) string) (Config, error) {
 		SandboxTTL:         time.Duration(integer("SANDBOX_TTL_MINUTES", 120, 5, 24*60)) * time.Minute,
 		SandboxLimit:       integer("SANDBOX_LIMIT_PER_HOUR", 6, 1, 100000),
 		RetentionDays:      integer("RETENTION_DAYS", 90, 1, 3650),
+		StatusCache:        time.Duration(integer("STATUS_CACHE_SECONDS", 10, 0, 300)) * time.Second,
 		Schedule:           get("SCHEDULE", "loop"),
 		TickCaller:         get("TICK_CALLER", ""),
+		TickSlack:          time.Duration(integer("TICK_SLACK_SECONDS", 60, 0, 600)) * time.Second,
+		MetricsPushURL:     get("METRICS_PUSH_URL", ""),
+		MetricsPushUser:    get("METRICS_PUSH_USER", ""),
+		MetricsPushToken:   get("METRICS_PUSH_TOKEN", ""),
+		ConfirmAfter:       time.Duration(integer("CONFIRM_SECONDS", 0, 0, 60)) * time.Second,
+		WarmAbove:          time.Duration(integer("WARM_THRESHOLD_MS", 0, 0, 30000)) * time.Millisecond,
 	}
 	c.TickAudience = get("TICK_AUDIENCE", c.PublicURL+"/internal/tick")
 	if owner := get("OWNER_GITHUB_ID", "0"); owner != "0" {

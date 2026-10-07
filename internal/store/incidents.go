@@ -95,6 +95,13 @@ func AddEvent(ctx context.Context, tx pgx.Tx, tenantID string, e Event) (Event, 
 	return e, err
 }
 
+// OpenIncidents counts the tenant's incidents that aren't resolved.
+func OpenIncidents(ctx context.Context, tx pgx.Tx) (int, error) {
+	var n int
+	err := tx.QueryRow(ctx, `SELECT count(*) FROM incidents WHERE status <> 'resolved'`).Scan(&n)
+	return n, err
+}
+
 func Events(ctx context.Context, tx pgx.Tx, incidentID string, publicOnly bool) ([]Event, error) {
 	rows, err := tx.Query(ctx, `SELECT id, incident_id, at, kind, message, public, author FROM incident_events
 		WHERE incident_id = $1 AND (public OR NOT $2) ORDER BY at, id`, incidentID, publicOnly)

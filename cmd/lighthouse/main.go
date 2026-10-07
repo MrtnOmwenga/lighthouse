@@ -19,11 +19,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/MrtnOmwenga/lighthouse/internal/alert"
 	"github.com/MrtnOmwenga/lighthouse/internal/auth"
 	"github.com/MrtnOmwenga/lighthouse/internal/config"
+	"github.com/MrtnOmwenga/lighthouse/internal/metrics"
 	"github.com/MrtnOmwenga/lighthouse/internal/monitor"
 	"github.com/MrtnOmwenga/lighthouse/internal/oidc"
 	"github.com/MrtnOmwenga/lighthouse/internal/site"
@@ -77,23 +79,28 @@ func serve(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 
-	scheduler := &monitor.Scheduler{Pool: pool, Prober: monitor.NewProber(), Workers: cfg.CheckWorkers, Log: log}
+	scheduler := &monitor.Scheduler{Pool: pool, Prober: monitor.NewProber(), Workers: cfg.CheckWorkers, Log: log,
+		Confirm: cfg.ConfirmAfter, Warm: cfg.WarmAbove}
+	var tagOpened func(ctx context.Context, tag, page, device string)
 	if len(cfg.AlertTo) > 0 {
-		notifier := &alert.Notifier{
-			Mailer: &alert.Mailer{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
-				From: cfg.AlertFrom, To: cfg.AlertTo},
-			Tenant: owner, PublicURL: cfg.PublicURL, Log: log,
-		}
+		mailer := &alert.Mailer{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+			From: cfg.AlertFrom, To: cfg.AlertTo}
+		notifier := &alert.Notifier{Mailer: mailer, Tenant: owner, PublicURL: cfg.PublicURL, Log: log}
 		scheduler.Notify = notifier.Notify
+		tagOpened = alert.TagOpened(mailer, cfg.PublicURL, log)
 		log.Info("email alerts on", "to", len(cfg.AlertTo))
 	}
 	keepChecks := time.Duration(cfg.RetentionDays) * 24 * time.Hour
 	done := make(chan struct{}, 2)
 	var tick web.Ticker
+	var registry *metrics.Registry
 	if cfg.ExternalSchedule() {
 		// Something else keeps time (Cloud Scheduler calling /internal/tick): an idle instance may
 		// get no CPU, so a clock of our own would stall.
-		tick = externalTicker(pool, log, scheduler, keepChecks, cfg.SandboxTTL)
+		scheduler.Slack = cfg.TickSlack
+		registry = metrics.NewRegistry()
+		report := reporter(pool, log, owner, registry, &metrics.Pusher{URL: cfg.MetricsPushURL, User: cfg.MetricsPushUser, Token: cfg.MetricsPushToken})
+		tick = externalTicker(pool, log, scheduler, keepChecks, cfg.SandboxTTL, report)
 		done <- struct{}{}
 		done <- struct{}{}
 		log.Info("checks scheduled externally", "audience", cfg.TickAudience, "caller", cfg.TickCaller)
@@ -104,7 +111,7 @@ func serve(ctx context.Context, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           handler(cfg, pool, log, owner, content, tick),
+		Handler:           handler(cfg, pool, log, owner, content, tick, scheduler, registry, tagOpened),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -129,23 +136,31 @@ func serve(ctx context.Context, log *slog.Logger) error {
 	return err
 }
 
-func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker) http.Handler {
+func handler(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, owner string, content *site.Site, tick web.Ticker, scheduler *monitor.Scheduler, registry *metrics.Registry,
+	tagOpened func(ctx context.Context, tag, page, device string)) http.Handler {
 	srv := web.New(cfg, pool, auth.New(pool, cfg), log, owner)
 	srv.Site = content
+	srv.Checks = scheduler
+	srv.Metrics = registry
+	srv.Analytics.TagOpened = tagOpened
 	if tick != nil {
 		srv.Tick = tick
 		srv.TickVerifier = &oidc.Verifier{Audience: cfg.TickAudience, Email: cfg.TickCaller}
+		srv.Drive = scheduler.RunTenant
 	}
 	return srv.Handler()
 }
 
 // externalTicker runs the checks that are due on each call, and housekeeping at most hourly per
 // instance (pruning twice is harmless; it's only wasted work).
-func externalTicker(pool *pgxpool.Pool, log *slog.Logger, s *monitor.Scheduler, keepChecks, keepSandboxes time.Duration) web.Ticker {
+func externalTicker(pool *pgxpool.Pool, log *slog.Logger, s *monitor.Scheduler, keepChecks, keepSandboxes time.Duration,
+	report func(ctx context.Context, checks int, took time.Duration)) web.Ticker {
 	var mu sync.Mutex
 	var lastPrune time.Time
 	return func(ctx context.Context) (int, error) {
+		started := time.Now()
 		n := s.RunOnce(ctx)
+		report(ctx, n, time.Since(started))
 		mu.Lock()
 		due := time.Since(lastPrune) >= time.Hour
 		if due {
@@ -156,6 +171,39 @@ func externalTicker(pool *pgxpool.Pool, log *slog.Logger, s *monitor.Scheduler, 
 			monitor.PruneOnce(ctx, pool, log, keepChecks, keepSandboxes)
 		}
 		return n, ctx.Err()
+	}
+}
+
+// reporter sends a round's figures outside when it ends: how the round went, each of the owner's
+// monitors, open incidents, and the requests answered since the last round. When these stop
+// arriving, the service receiving them knows Lighthouse itself is down. A failed push is logged
+// and never fails the round.
+func reporter(pool *pgxpool.Pool, log *slog.Logger, owner string, registry *metrics.Registry, pusher *metrics.Pusher) func(context.Context, int, time.Duration) {
+	return func(ctx context.Context, checks int, took time.Duration) {
+		samples := []metrics.Sample{{Name: "lighthouse_tick", Fields: map[string]float64{"checks": float64(checks), "duration_seconds": took.Seconds()}}}
+		err := store.WithTenant(ctx, pool, owner, func(tx pgx.Tx) error {
+			monitors, err := store.ListMonitors(ctx, tx, false)
+			if err != nil {
+				return err
+			}
+			for _, m := range monitors {
+				up := 0.0
+				if m.Health == "up" {
+					up = 1
+				}
+				samples = append(samples, metrics.Sample{Name: "lighthouse_monitor", Labels: map[string]string{"monitor": m.Slug}, Fields: map[string]float64{"up": up}})
+			}
+			open, err := store.OpenIncidents(ctx, tx)
+			samples = append(samples, metrics.Sample{Name: "lighthouse_incidents", Fields: map[string]float64{"open": float64(open)}})
+			return err
+		})
+		if err != nil && ctx.Err() == nil {
+			log.Error("metrics: reading the round's figures", "err", err)
+		}
+		samples = append(samples, registry.Drain()...)
+		if err := pusher.Push(ctx, samples, time.Now()); err != nil && ctx.Err() == nil {
+			log.Error("metrics: push failed", "err", err)
+		}
 	}
 }
 

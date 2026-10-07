@@ -47,24 +47,57 @@ variable "github_client_id" {
   description = "The GitHub OAuth app for Lighthouse's owner sign-in."
 }
 
-variable "github_client_secret" {
-  type      = string
-  sensitive = true
-}
-
 variable "owner_github_id" {
   type    = number
   default = 103695661
-}
-
-variable "ghostchat_mongodb_uri" {
-  type        = string
-  sensitive   = true
-  description = "MongoDB Atlas connection string for GhostChat (a user limited to the ghostchat database)."
 }
 
 variable "tick_schedule" {
   type        = string
   default     = "*/15 * * * *"
   description = "How often Cloud Scheduler asks Lighthouse to run due checks. Neon's free plan allows 100 compute-hours a month per project; ticks every 15 minutes let the database sleep most of the time."
+}
+
+variable "alert_email" {
+  type        = string
+  default     = ""
+  description = "Where security alerts go (a refused sign-in, a rejected scheduler call). Empty: no alerts."
+}
+
+variable "infisical_project_id" {
+  type        = string
+  description = "The Infisical project holding the secrets (see infisical.tf)."
+}
+
+variable "infisical_environment" {
+  type    = string
+  default = "prod"
+}
+
+variable "infisical_host" {
+  type    = string
+  default = "https://app.infisical.com"
+}
+
+variable "smtp_username" {
+  type        = string
+  default     = ""
+  description = "The mailbox Lighthouse sends incident emails from (its password is kept in Infisical). Empty: no incident emails."
+}
+
+variable "smtp_host" {
+  type    = string
+  default = "smtp.gmail.com"
+}
+
+variable "metrics_push_url" {
+  type        = string
+  default     = ""
+  description = "Grafana Cloud's InfluxDB line-protocol endpoint for the stack's Prometheus (https://<prometheus host>/api/v1/push/influx/write). Empty: no metrics, dashboard or Grafana alerts."
+}
+
+variable "metrics_push_user" {
+  type        = string
+  default     = ""
+  description = "The Prometheus instance's numeric user. Its token is kept in Infisical."
 }

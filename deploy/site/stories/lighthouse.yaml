@@ -99,7 +99,7 @@ limits:
     - >-
       Checks run every 15 minutes, not every few seconds: the databases are on a free plan with a
       monthly compute allowance, and a database woken every minute would use it up by mid-month.
-      So an outage can take up to about 45 minutes to become an incident. Aggregations are computed
+      So an outage can go unnoticed for up to 15 minutes; once a check fails, it is checked again within seconds and confirmed as an incident in under a minute. Aggregations are computed
       from raw checks on each request, which is fine at this scale; daily rollups would be the
       first optimization. The Kubernetes deployment (k3s, Flux, Cloudflare Tunnels) is written and
       proven on a local cluster, but isn't the live one.

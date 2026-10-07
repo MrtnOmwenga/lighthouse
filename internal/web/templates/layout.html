@@ -4,10 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.}}</title>
-<link rel="stylesheet" href="/static/style.css">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<script src="/static/a.js" defer></script>
+<link rel="stylesheet" href="{{asset "style.css"}}">
+<link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
+<script src="{{asset "a.js"}}" defer></script>
 <link rel="preload" href="/static/fonts/newsreader.woff2" as="font" type="font/woff2" crossorigin>
+{{end}}
+
+{{/* What a link preview shows, and the page's one true address. Called with the "social" function. */}}
+{{define "social"}}
+<link rel="canonical" href="{{.URL}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="The Lighthouse">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Description}}">
+<meta property="og:url" content="{{.URL}}">
+{{with .Image}}<meta property="og:image" content="{{.}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">{{else}}<meta name="twitter:card" content="summary">{{end}}
 {{end}}
 
 {{define "masthead"}}

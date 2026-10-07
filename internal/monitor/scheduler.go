@@ -23,6 +23,20 @@ type Scheduler struct {
 	Workers int
 	Log     *slog.Logger
 	Tick    time.Duration // how often to look for due monitors (default 1s)
+	// Slack treats a monitor as due this long ahead of time (never more than a tenth of its
+	// interval). Zero for Run, which looks every second; set it when rounds are started from
+	// outside at fixed times, where a monitor a moment short of due would wait a whole period.
+	Slack time.Duration
+	// Confirm, when above zero, re-checks an HTTP monitor this long after a result that starts to
+	// change its state (a failure while it is up, a success while it is down), and again until
+	// the state settles or a threshold is reached. Without it, three failures in a row take three
+	// intervals to see; with it, an outage becomes an incident about a minute after it is first
+	// noticed.
+	Confirm time.Duration
+	// Warm, when above zero, treats a passing HTTP check slower than this as having woken a
+	// sleeping service: it is recorded as a warm-up and the monitor is checked again at once, so
+	// response-time figures describe the service, not its start-up.
+	Warm time.Duration
 	// Notify, if set, hears about incidents opened or resolved automatically, after the change
 	// is committed. It runs on the checking worker, so it should be quick or time-limited.
 	Notify func(ctx context.Context, c Change)
@@ -62,25 +76,124 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-// RunOnce checks everything due now and returns when those checks are recorded. Tests use it.
+// RunOnce checks everything due now and returns when those checks are recorded: the whole of a
+// schedule driven from outside. Due monitors are listed a batch at a time, so it keeps going until
+// a batch holds nothing new; each monitor is checked at most once, however short its interval and
+// however long the round takes.
 func (s *Scheduler) RunOnce(ctx context.Context) int {
 	sem := make(chan struct{}, max(s.Workers, 1))
 	var wg sync.WaitGroup
-	n := s.dispatch(ctx, sem, &wg)
+	seen := map[string]bool{}
+	for ctx.Err() == nil {
+		due, err := store.DueMonitors(ctx, s.Pool, cap(sem)*4, s.Slack)
+		if err != nil {
+			if ctx.Err() == nil {
+				s.Log.Error("listing due monitors", "err", err)
+			}
+			break
+		}
+		var fresh []store.Due
+		for _, d := range due {
+			if !seen[d.MonitorID] {
+				seen[d.MonitorID] = true
+				fresh = append(fresh, d)
+			}
+		}
+		if len(fresh) == 0 {
+			break
+		}
+		s.start(ctx, fresh, sem, &wg)
+		wg.Wait()
+	}
+	wg.Wait()
+	return len(seen)
+}
+
+// RunTenant checks one tenant's simulated monitors that are due now, and returns when they are
+// recorded. With a schedule driven from outside, nothing else would check a sandbox between
+// rounds; the console calls this as it polls, so a visitor watching their sandbox keeps it
+// running. Simulated checks send no traffic and take no time, so this is safe on a request.
+func (s *Scheduler) RunTenant(ctx context.Context, tenantID string) int {
+	var ids []string
+	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
+		ids, err = store.DueSimulated(ctx, tx)
+		return err
+	})
+	if err != nil {
+		if ctx.Err() == nil {
+			s.Log.Error("listing a tenant's due monitors", "err", err)
+		}
+		return 0
+	}
+	due := make([]store.Due, len(ids))
+	for i, id := range ids {
+		due[i] = store.Due{MonitorID: id, TenantID: tenantID}
+	}
+	sem := make(chan struct{}, max(s.Workers, 1))
+	var wg sync.WaitGroup
+	n := s.start(ctx, due, sem, &wg)
 	wg.Wait()
 	return n
+}
+
+// ErrPaused is returned when a check is asked for on a paused monitor.
+var ErrPaused = errors.New("monitor is paused")
+
+// CheckNow checks one monitor at once, whatever its schedule, records the result like any other
+// check, and returns it. The next scheduled check is a full interval later.
+func (s *Scheduler) CheckNow(ctx context.Context, tenantID, monitorID string) (store.Check, error) {
+	var none store.Check
+	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) error {
+		m, err := store.GetMonitor(ctx, tx, monitorID)
+		if err != nil {
+			return err
+		}
+		if m.Paused {
+			return ErrPaused
+		}
+		return store.MakeDue(ctx, tx, monitorID)
+	})
+	if err != nil {
+		return none, err
+	}
+	if err := s.Check(ctx, tenantID, monitorID); err != nil {
+		return none, err
+	}
+	var checks []store.Check
+	err = store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
+		checks, err = store.RecentChecks(ctx, tx, monitorID, 0, 1)
+		return err
+	})
+	if err != nil || len(checks) == 0 {
+		return none, err
+	}
+	return checks[0], nil
+}
+
+// Try probes with settings that haven't been saved, and records nothing. It goes through the same
+// prober as a scheduled check, so the same address guard applies.
+func (s *Scheduler) Try(ctx context.Context, in store.MonitorInput) Result {
+	return s.probe(ctx, store.Monitor{
+		Kind: in.Kind, URL: in.URL, SimulatedMode: in.SimulatedMode, TimeoutMS: in.TimeoutMS,
+		ExpectedStatusMin: in.ExpectedStatusMin, ExpectedStatusMax: in.ExpectedStatusMax, ExpectedText: in.ExpectedText,
+		AllowPrivateNetwork: in.AllowPrivateNetwork,
+	})
 }
 
 // dispatch starts a check for each due monitor, as many at a time as there are workers, waiting
 // for a free worker when all are busy.
 func (s *Scheduler) dispatch(ctx context.Context, sem chan struct{}, wg *sync.WaitGroup) int {
-	due, err := store.DueMonitors(ctx, s.Pool, cap(sem)*4)
+	due, err := store.DueMonitors(ctx, s.Pool, cap(sem)*4, s.Slack)
 	if err != nil {
 		if ctx.Err() == nil {
 			s.Log.Error("listing due monitors", "err", err)
 		}
 		return 0
 	}
+	return s.start(ctx, due, sem, wg)
+}
+
+func (s *Scheduler) start(ctx context.Context, due []store.Due, sem chan struct{}, wg *sync.WaitGroup) int {
 	started := 0
 	for _, d := range due {
 		select {
@@ -102,12 +215,13 @@ func (s *Scheduler) dispatch(ctx context.Context, sem chan struct{}, wg *sync.Wa
 }
 
 // Check claims one monitor, probes it outside any transaction (a probe can take up to 30 s), then
-// records the result and applies any state change in one transaction.
+// records the result and applies any state change in one transaction. A slow first answer and a
+// state that starts to change each lead to further probes at once (see Warm and Confirm).
 func (s *Scheduler) Check(ctx context.Context, tenantID, monitorID string) error {
 	var m store.Monitor
 	err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) error {
 		var err error
-		m, err = store.ClaimMonitor(ctx, tx, monitorID)
+		m, err = store.ClaimMonitor(ctx, tx, monitorID, s.Slack)
 		return err
 	})
 	if errors.Is(err, store.ErrNotFound) {
@@ -117,17 +231,54 @@ func (s *Scheduler) Check(ctx context.Context, tenantID, monitorID string) error
 		return fmt.Errorf("claim: %w", err)
 	}
 
+	save := func(r Result, warmup bool) (store.Monitor, bool, error) {
+		var change *Change
+		var after store.Monitor
+		var found bool
+		err := store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
+			change, after, found, err = record(ctx, tx, tenantID, monitorID, r, time.Now(), warmup)
+			return err
+		})
+		if err == nil && change != nil && s.Notify != nil {
+			s.Notify(ctx, *change)
+		}
+		return after, found, err
+	}
+
 	result := s.probe(ctx, m)
-	at := time.Now()
-	var change *Change
-	err = store.WithTenant(ctx, s.Pool, tenantID, func(tx pgx.Tx) (err error) {
-		change, err = record(ctx, tx, tenantID, monitorID, result, at)
-		return err
-	})
-	if err == nil && change != nil && s.Notify != nil {
-		s.Notify(ctx, *change)
+	if s.Warm > 0 && m.Kind == "http" && result.OK && result.Latency > s.Warm {
+		if _, found, err := save(result, true); err != nil || !found {
+			return err
+		}
+		result = s.probe(ctx, m)
+	}
+	after, found, err := save(result, false)
+
+	// Settle a state that has started to change, instead of leaving it for the next rounds.
+	for i := 0; err == nil && found && s.Confirm > 0 && m.Kind == "http" && unsettled(after) && i < maxConfirmations; i++ {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(s.Confirm):
+		}
+		after, found, err = save(s.probe(ctx, m), false)
 	}
 	return err
+}
+
+// maxConfirmations bounds the re-checks of one round, whatever the thresholds.
+const maxConfirmations = 5
+
+// unsettled reports whether a monitor is part-way to changing state: failing but not yet down, or
+// recovering but not yet up.
+func unsettled(m store.Monitor) bool {
+	if m.Paused {
+		return false
+	}
+	if m.Health == string(Down) {
+		return m.ConsecutiveSuccess > 0
+	}
+	return m.ConsecutiveFailures > 0
 }
 
 func (s *Scheduler) probe(ctx context.Context, m store.Monitor) Result {
@@ -152,15 +303,15 @@ func (s *Scheduler) probe(ctx context.Context, m store.Monitor) Result {
 // record stores a check and folds it into the monitor's state, opening or resolving its automatic
 // incident, and reports that change. The monitor row is locked, so two results for one monitor
 // can't interleave.
-func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result, at time.Time) (*Change, error) {
+func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result, at time.Time, warmup bool) (*Change, store.Monitor, bool, error) {
 	m, err := store.LockMonitor(ctx, tx, monitorID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, nil // deleted while the probe ran
+		return nil, m, false, nil // deleted while the probe ran
 	}
 	if err != nil {
-		return nil, err
+		return nil, m, false, err
 	}
-	c := store.Check{MonitorID: m.ID, At: at, OK: r.OK, LatencyMS: int(r.Latency.Milliseconds()), TLSExpiresAt: r.TLSExpiresAt}
+	c := store.Check{MonitorID: m.ID, At: at, OK: r.OK, LatencyMS: int(r.Latency.Milliseconds()), TLSExpiresAt: r.TLSExpiresAt, Warmup: warmup}
 	if r.StatusCode != 0 {
 		c.StatusCode = &r.StatusCode
 	}
@@ -169,7 +320,7 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 		c.Failure = &f
 	}
 	if _, err := store.InsertCheck(ctx, tx, tenantID, c); err != nil {
-		return nil, fmt.Errorf("insert check: %w", err)
+		return nil, m, false, fmt.Errorf("insert check: %w", err)
 	}
 
 	next, transition := Next(
@@ -186,13 +337,13 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 			MonitorID: &m.ID, Title: m.Name + " is down", Severity: "high", Automatic: true, Public: m.Public, StartedAt: at,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("open incident: %w", err)
+			return nil, m, false, fmt.Errorf("open incident: %w", err)
 		}
 		if _, err := store.AddEvent(ctx, tx, tenantID, store.Event{
 			IncidentID: inc.ID, At: at, Kind: "opened", Public: true, Author: "Lighthouse",
 			Message: fmt.Sprintf("%d checks in a row failed (%s).", next.Failures, r.Failure),
 		}); err != nil {
-			return nil, err
+			return nil, m, false, err
 		}
 		m.OpenIncidentID = &inc.ID
 		change = &Change{TenantID: tenantID, Opened: true, IncidentID: inc.ID, Title: inc.Title, Monitor: m.Name,
@@ -201,7 +352,7 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 		if m.OpenIncidentID != nil {
 			inc, resolved, err := resolve(ctx, tx, tenantID, *m.OpenIncidentID, next.Successes, at)
 			if err != nil {
-				return nil, err
+				return nil, m, false, err
 			}
 			if resolved {
 				change = &Change{TenantID: tenantID, IncidentID: inc.ID, Title: inc.Title, Monitor: m.Name,
@@ -210,7 +361,7 @@ func record(ctx context.Context, tx pgx.Tx, tenantID, monitorID string, r Result
 		}
 		m.OpenIncidentID = nil
 	}
-	return change, store.SaveMonitorState(ctx, tx, m)
+	return change, m, true, store.SaveMonitorState(ctx, tx, m)
 }
 
 // resolve closes an automatic incident when its monitor recovers, unless someone already resolved
@@ -258,6 +409,9 @@ func PruneOnce(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger, keepCh
 		}
 	} else if n.Checks+n.Sandboxes+n.Sessions > 0 {
 		log.Info("pruned", "checks", n.Checks, "sandboxes", n.Sandboxes, "sessions", n.Sessions)
+	}
+	if _, err := store.PruneSecurity(ctx, pool, keepChecks); err != nil && ctx.Err() == nil {
+		log.Error("pruning sign-in records", "err", err)
 	}
 	if views, err := store.PruneAnalytics(ctx, pool, keepChecks); err != nil {
 		if ctx.Err() == nil {

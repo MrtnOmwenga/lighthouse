@@ -1,5 +1,6 @@
 {{template "head" (printf "The Lighthouse · %s" .Owner)}}
 <meta name="description" content="The engineering portfolio of {{.Owner}}: live projects, how they were built, and the system that monitors them.">
+{{template "social" (social . "/" (printf "The Lighthouse · %s" .Owner) (printf "The engineering portfolio of %s: live projects, how they were built, and the system that monitors them." .Owner))}}
 </head>
 <body>
 {{template "masthead" .}}
@@ -22,6 +23,12 @@
     <h1>{{.Lead.Headline}}</h1>
     {{with .Lead.Standfirst}}<p class="standfirst">{{.}}</p>{{end}}
     {{with .Lead.Paragraphs}}<div class="two-col body">{{range $i, $p := .}}<p {{if eq $i 0}}class="drop"{{end}}>{{$p}}</p>{{end}}</div>{{end}}
+    {{with .Delivered}}
+    <div class="delivered">
+      <h2 class="label">What he has delivered</h2>
+      <ul class="outcomes">{{range .}}<li><b>{{.Title}}.</b> {{.Body}}</li>{{end}}</ul>
+    </div>
+    {{end}}
   </article>
   <aside class="span-4 stack">
     {{with .Portrait}}
@@ -41,6 +48,13 @@
     </div>
   </aside>
 </section>
+
+{{with .Works}}
+<section class="wrap section">
+  <h2 class="label">How he works</h2>
+  <div class="works">{{range .}}<div class="stack-sm"><span class="t">{{.Title}}</span><span class="d">{{.Body}}</span></div>{{end}}</div>
+</section>
+{{end}}
 
 {{with .HowTo}}
 <section class="wrap"><div class="howto">

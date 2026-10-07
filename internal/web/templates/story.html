@@ -1,5 +1,6 @@
 {{with .Card}}{{template "head" (printf "%s · The Lighthouse" .Name)}}
-<meta name="description" content="{{.Plain}}">{{end}}
+<meta name="description" content="{{.Plain}}">
+{{template "social" (social $ (printf "/projects/%s" .Slug) (printf "%s: %s" .Name .Headline) .Plain)}}{{end}}
 </head>
 <body>
 {{template "masthead" .}}

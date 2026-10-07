@@ -77,7 +77,9 @@ the monitoring in a sandbox, without an account.
   next day or recover an IP. The API's database role can't read the salts; one narrow function
   hands out today's.
 - **Signals are respected before anything is sent:** Global Privacy Control and Do Not Track stop
-  the script, and the server checks again. Bots and the signed-in owner aren't counted.
+  the script, and the server checks again. Bots and the signed-in owner aren't counted, nor are browsers the
+  owner has marked as his own (a cookie in his browser only). The report separates engaged readers
+  (five seconds of reading, or a demo opened) from everyone who merely loaded a page.
 - **Engaged time is measured by the server.** The page sends a heartbeat every 15 seconds only while
   it is visible and in use; each heartbeat can add at most 20 seconds, measured from the previous
   one on the server, so a client can't claim time that didn't pass.
@@ -148,7 +150,12 @@ The image is a static binary on a distroless base, running as a non-root user wi
 filesystem. `lighthouse migrate` applies migrations as the database owner and creates the app's
 least-privileged role; `lighthouse serve` runs the server, scheduler and housekeeping (with
 `SCHEDULE=external`, calls to `POST /internal/tick` drive the checks instead, for platforms that
-freeze idle instances).
+freeze idle instances; each call checks everything due, a monitor due within `TICK_SLACK_SECONDS`
+counts as due so a call that arrives a little early doesn't skip it, and a sandbox's simulated
+monitors are checked as its console reads data). `CONFIRM_SECONDS` re-checks an HTTP monitor that soon
+after a result that starts to change its state, so an outage is confirmed within a minute, and
+`WARM_THRESHOLD_MS` records a slower passing answer as a sleeping service waking up and checks
+again, so response times describe the service and not its start-up.
 
 ## Design
 
@@ -196,7 +203,7 @@ on Google Cloud Run behind a Cloudflare edge ([`deploy/`](deploy/README.md)).
   one, accepted only from that repository's release branch): copy to Artifact Registry, run the
   migrations as a job, deploy by digest, smoke-test through the edge.
 - **Free by design.** Every setting follows from a free-tier limit: a Neon project per app, 15-minute
-  ticks so the databases can sleep, exactly six secrets, two image versions kept, static files
+  ticks so the databases can sleep, seven secrets (one over the free six), two image versions kept, static files
   cached at the edge. All of it is Terraform ([`deploy/cloudrun`](deploy/cloudrun)).
 
 **It also runs on Kubernetes.** [`deploy/terraform`](deploy/terraform) and

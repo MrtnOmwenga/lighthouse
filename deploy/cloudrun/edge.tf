@@ -33,6 +33,16 @@ resource "cloudflare_workers_script" "edge" {
       text = jsonencode({ for k, host in local.hosts : host => google_cloud_run_v2_service.app[k].uri })
     },
     {
+      type = "plain_text"
+      name = "PAGE_HOSTS" # whose public pages the edge keeps a copy of
+      text = jsonencode([local.hosts.lighthouse])
+    },
+    {
+      type = "plain_text"
+      name = "SECRET_HOSTS"
+      text = jsonencode([local.hosts.lighthouse])
+    },
+    {
       type = "secret_text"
       name = "EDGE_SECRET"
       text = random_password.edge.result

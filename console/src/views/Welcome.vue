@@ -2,12 +2,15 @@
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, type SignInOptions } from '../api';
-import { loadSession } from '../session';
+import { loadSession, session } from '../session';
 
 const router = useRouter();
 const options = ref<SignInOptions | null>(null);
 const busy = ref(false);
 const error = ref('');
+// Why the visitor is back here, said once.
+const notice = session.notice;
+session.notice = '';
 
 onMounted(async () => {
   try { options.value = await api.signInOptions(); } catch { options.value = { github: false, dev: false, sandbox: true }; }
@@ -33,6 +36,7 @@ async function enter(how: 'sandbox' | 'dev') {
   <section class="section grid">
     <div class="span-8 stack">
       <span class="kicker">Console</span>
+      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <h1 class="page-title">Run the monitor yourself</h1>
       <p class="standfirst">
         The sandbox gives you a private copy of Lighthouse with three simulated sites. Break one, watch the monitor
