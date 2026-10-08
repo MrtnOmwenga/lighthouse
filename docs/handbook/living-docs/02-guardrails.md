@@ -113,6 +113,13 @@ the docs **pauses its captures** rather than writing under rules it doesn't know
 
 ## Known gaps
 
+- **A decision is published before anyone has reviewed the code it belongs to.** Implementation
+  from an unmerged branch waits; Decision History from the same branch goes in at once. If code
+  review then overturns the approach, the docs already say "decided X because Y", and they are
+  only corrected if a later captured session records the reversal. A poor decision made on a
+  branch reads exactly like a good one.
+- **Capture happens when a session ends or is compacted,** which can be long after the work. A
+  long session can open and merge several pull requests before anything is filed.
 - **The checks are about form, not truth.** They guarantee where a change goes and what shape it
   has. A plausible, well-formed, wrong entry passes all of them.
 - **The secret and instruction checks are by pattern.** They catch the obvious and can be evaded.
