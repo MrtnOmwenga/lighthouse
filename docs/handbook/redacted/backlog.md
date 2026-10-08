@@ -42,3 +42,10 @@ Carried over from the Lighthouse build:
 | R13 | **Record refused actions** (a 403) in a separate transaction, so they survive the rollback. | A member probing for what they may not open leaves no trace. | M |
 | R14 | **Record reads of classified sections.** | The log says who changed a classified section, never who read it, which is what an investigation would ask. | M |
 | R15 | **Search, paging and export for the log** (by member, action, date). | It can only be listed newest-first, up to 500 events. | S |
+
+## From Part 5: sections, clearances and redaction
+
+| # | What | Why | Size |
+|---|---|---|---|
+| R16 | **Decide what a document's title and `body` are:** classify them like a section, or drop `body` now that content lives in sections. | Sections are redacted; the title and the original body field are shown to anyone who can open the document. | M |
+| R17 | *(Optional)* **Compartments:** a need-to-know label on a section, held by named members, beside the clearance ladder. | Real classification isn't one ladder; "secret" doesn't mean every secret-cleared person. | L |

@@ -13,7 +13,7 @@ these pages are in that repository.
 | 2 | [Tenants and the database](02-tenants-and-database.md) | Row-level security, one transaction per request, how deep code finds it, foreign keys that include the organization, what the application role may do |
 | 3 | [Signing in: passwords, tokens and API keys](03-signing-in.md) | Argon2id, one answer for every failed sign-in, what the access token is for, refresh-token rotation and what it catches, API keys, lockout and rate limits |
 | 4 | [The audit log](04-audit-log.md) | What is recorded, why it commits with the change, the hash chain and what it can and can't detect, keeping order under concurrency |
-| 5 | Sections, clearances and redaction | *to be written* |
+| 5 | [Sections, clearances and redaction](05-redaction.md) | Two independent checks, why a section is a separate document, word-level marks and server-made projections, what a redaction still reveals |
 | 6 | Live collaboration | *to be written* |
 | 7 | The demo | *to be written* |
 | 8 | Testing and the pipeline | *to be written* |
