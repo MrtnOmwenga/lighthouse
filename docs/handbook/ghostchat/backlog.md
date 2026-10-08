@@ -18,3 +18,10 @@ Carried over from the Lighthouse build:
 |---|---|---|---|
 | G5 | **Make signing out end the session on the server** (a session id that can be revoked, or a short token with a revocable refresh). | The session is a signed token in a cookie; signing out only deletes the cookie, and a copied token works until it expires. | M |
 | G6 | **Code transparency for the web client** (Martin's question, 2026-10-08: how to stop the server sending code that leaks keys). Build the bundle reproducibly in CI; sign its hash keylessly (the GitHub identity, as the images already are); publish the hash in GhostChat's own transparency log; and give users a way to check that what their browser received is what was published: a small browser extension, or serving the client from a content-addressed address so the code can't change without the address changing. | The server delivers the code that does the encryption, so a compromised server can send code that leaks keys. Nothing a page loads from that server can check the server. The check has to come from outside it. | L |
+
+## From Part 2: messages
+
+| # | What | Why | Size |
+|---|---|---|---|
+| G7 | **Forward secrecy:** the Double Ratchet for direct messages, MLS for rooms. | Message keys are sealed to long-lived keys, so a leaked private key opens every past message sealed to it. The largest gap, and the design document's own "next". | L |
+| G8 | **Let a new device detect withheld messages:** each participant signs "I have seen this conversation up to number N", and devices compare. | A chain shows a change in the middle, not that the server stopped delivering the newest messages. | M |
