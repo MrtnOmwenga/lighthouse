@@ -114,6 +114,10 @@ Three decisions keep it from lying or flickering:
   attempt looks like a dropped connection and is retried. Whether that creates a second order is
   left to the app: its handler has to send something the server can use to spot the repeat (the
   action's id is there for that). The library doesn't do it, or say so loudly.
+- **An attempt has no time limit.** A handler whose request never answers keeps the drain running
+  for ever, and nothing else is sent until the app restarts.
+- **A queue that can't be read is deleted.** That keeps new work from being blocked, and loses
+  whatever it held.
 - **Actions don't know about each other.** If "create order" fails for good, the queued "edit
   that order" is still sent, and fails too.
 - **The whole queue is rewritten on every change,** as one piece of text under one key. Fine for
