@@ -57,3 +57,12 @@ Carried over from the Lighthouse build:
 | R18 | **Re-check open connections on a timer as well as on announcements:** at least when a share's expiry passes, and when a member signs out. | A socket is only re-checked when a change is announced. A temporary share that runs out, or a sign-out, leaves it open as it was. | M |
 | R19 | **Compact long-lived sections** (re-encode the current state periodically). | Tombstones and history only grow. | S |
 | R20 | **Lock only the connections a change could affect,** not every editor in the organization. | Any permission change briefly makes every section in the organization read-only. | M |
+
+## From Part 7: the demo
+
+| # | What | Why | Size |
+|---|---|---|---|
+| R21 | **Clean up expired demos from outside the server's own timer:** run the clean-up when a new demo is created, or from a scheduled call. | The timer doesn't fire while the Cloud Run instance is idle, so expired demo organizations linger until the next visit. | S |
+| R22 | **A layout for narrow screens that keeps cause and effect together** (the Director's desk beside one chosen pane, with a switcher). | Below 900 pixels the four panes stack and the reaction is off screen. | M |
+| R23 | **Have "Play it for me" wait for each effect** before moving on, as "Guide me" does, instead of a fixed number of seconds. | On a slow connection a caption can move on before its effect appears. | S |
+| R24 | *(Optional)* **A second scene** showing what the demo leaves out: an API key, an auditor, a share that expires. | The demo tells one story; much of the API is only visible in its tests. | L |

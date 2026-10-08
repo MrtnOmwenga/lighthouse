@@ -15,7 +15,7 @@ these pages are in that repository.
 | 4 | [The audit log](04-audit-log.md) | What is recorded, why it commits with the change, the hash chain and what it can and can't detect, keeping order under concurrency |
 | 5 | [Sections, clearances and redaction](05-redaction.md) | Two independent checks, why a section is a separate document, word-level marks and server-made projections, what a redaction still reveals |
 | 6 | [Live collaboration](06-live-collaboration.md) | How simultaneous edits merge (a CRDT), who may connect to what, re-checking open connections when permissions change, the race that was found and closed |
-| 7 | The demo | *to be written* |
+| 7 | [The demo and its guided tours](07-demo.md) | The cast and why each is there, a real organization per visitor, why the panes are iframes, how the two tours act through real controls and check real effects |
 | 8 | Testing and the pipeline | *to be written* |
 
 What the review finds that should be built or fixed is in the [build list](backlog.md).
