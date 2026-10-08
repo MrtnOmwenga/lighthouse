@@ -18,3 +18,10 @@ Carried over from the Lighthouse build:
 |---|---|---|---|
 | R5 | **Pagination on list endpoints.** | Lists return the newest 100 rows and no way to ask for more. | S |
 | R6 | **Make it impossible to write an endpoint that forgets to ask** (Martin's idea, 2026-10-08): each route declares its action (a decorator), and a test fails for any route that declares none. The check itself stays in the service, because it needs the resource loaded first. | `authorize` is a call each service method must remember. The generated matrix proves the endpoints it knows about; nothing catches a new route that was never added to it. | M |
+
+## From Part 2: tenants and the database
+
+| # | What | Why | Size |
+|---|---|---|---|
+| R7 | **A `down` for every migration, and a test that runs them all down and up again** (as Lighthouse has). | Migrations have only an `up`; a rollback would be written by hand, under pressure. | M |
+| R8 | **Record an API key's last use at most once a minute.** | Every request from a key updates `last_used_at`, so read-only traffic still writes a row each time. | S |
