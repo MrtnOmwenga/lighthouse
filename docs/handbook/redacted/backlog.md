@@ -25,3 +25,11 @@ Carried over from the Lighthouse build:
 |---|---|---|---|
 | R7 | **A `down` for every migration, and a test that runs them all down and up again** (as Lighthouse has). | Migrations have only an `up`; a rollback would be written by hand, under pressure. | M |
 | R8 | **Record an API key's last use at most once a minute.** | Every request from a key updates `last_used_at`, so read-only traffic still writes a row each time. | S |
+
+## From Part 3: signing in
+
+| # | What | Why | Size |
+|---|---|---|---|
+| R9 | **Stop sign-up revealing which emails are registered** (answer the same way and send the rest by email, or at least rate-limit and say less). | It answers 409 "That email is already registered", the enumeration sign-in avoids. Needs email to do properly. | M |
+| R10 | **Remove used and expired refresh tokens** (a function the housekeeping calls, as demo clean-up does). | The table grows by one row per refresh and nothing deletes from it. | S |
+| R11 | **Tolerate two tabs refreshing at once:** accept a just-used token for a few seconds and return the pair it already produced. | The second tab's refresh looks like theft, and the member is signed out. | M |
