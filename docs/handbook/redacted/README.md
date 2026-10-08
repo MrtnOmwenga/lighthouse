@@ -16,6 +16,6 @@ these pages are in that repository.
 | 5 | [Sections, clearances and redaction](05-redaction.md) | Two independent checks, why a section is a separate document, word-level marks and server-made projections, what a redaction still reveals |
 | 6 | [Live collaboration](06-live-collaboration.md) | How simultaneous edits merge (a CRDT), who may connect to what, re-checking open connections when permissions change, the race that was found and closed |
 | 7 | [The demo and its guided tours](07-demo.md) | The cast and why each is there, a real organization per visitor, why the panes are iframes, how the two tours act through real controls and check real effects |
-| 8 | Testing and the pipeline | *to be written* |
+| 8 | [Testing and the pipeline](08-testing.md) | What is unusual about the 605 tests: generated from the policy, a test of the central claim, property and mutation testing, a latency budget, a weekly flake hunt |
 
 What the review finds that should be built or fixed is in the [build list](backlog.md).
