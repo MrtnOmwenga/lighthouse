@@ -33,3 +33,12 @@ Carried over from the Lighthouse build:
 | R9 | **Stop sign-up revealing which emails are registered** (answer the same way and send the rest by email, or at least rate-limit and say less). | It answers 409 "That email is already registered", the enumeration sign-in avoids. Needs email to do properly. | M |
 | R10 | **Remove used and expired refresh tokens** (a function the housekeeping calls, as demo clean-up does). | The table grows by one row per refresh and nothing deletes from it. | S |
 | R11 | **Tolerate two tabs refreshing at once:** accept a just-used token for a few seconds and return the pair it already produced. | The second tab's refresh looks like theft, and the member is signed out. | M |
+
+## From Part 4: the audit log
+
+| # | What | Why | Size |
+|---|---|---|---|
+| R12 | **Anchor the chain outside the database:** publish each organization's latest sequence number and hash somewhere the database owner can't change (a signed checkpoint in a write-once bucket, or sent to the auditors), and have `verify` compare against it. | The chain detects a partial change. Rewriting it consistently to the end, or cutting off the newest events, verifies cleanly. | M |
+| R13 | **Record refused actions** (a 403) in a separate transaction, so they survive the rollback. | A member probing for what they may not open leaves no trace. | M |
+| R14 | **Record reads of classified sections.** | The log says who changed a classified section, never who read it, which is what an investigation would ask. | M |
+| R15 | **Search, paging and export for the log** (by member, action, date). | It can only be listed newest-first, up to 500 events. | S |
