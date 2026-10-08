@@ -13,3 +13,16 @@ Nothing is built during the review. Sizes: S (under an hour), M (a few hours), L
 | O7 | **A helper for large first loads** (Martin, 2026-10-09): write rows in small transactions, give the screen a turn between them, and report progress. | The database layer is synchronous, so one big write freezes the screen; the advice to split it up is in a comment, with nothing to do it. | S |
 | O8 | **A time limit on each action's attempt.** | A handler whose request never answers keeps the drain "running" for ever, and nothing else is sent. | S |
 | O9 | **Set a corrupted queue aside instead of deleting it,** and report it. | A queue that can't be read is cleared so new work isn't blocked; whatever it held is lost without a chance to recover it. | S |
+
+## A possible future direction (Martin, 2026-10-09)
+
+Grow this from a write queue into a full offline layer that could stand beside the established
+tools (PowerSync, WatermelonDB, RxDB, TanStack Query's offline support). Checked on 2026-10-09:
+today it can't be compared with them. It has no syncing of data, no conflict handling and no
+reactive queries; they are built by funded teams over years. What it is, is a careful version of
+the one piece teams still write by hand beside those tools: the queue for pending writes.
+
+What "a serious competitor" would need, beyond the list above: keeping local data in step with the
+server (not only sending writes), conflict handling, queries that update the screen when data
+changes, more than one storage backend, and a published package with documentation and examples.
+Not planned; noted so the option isn't lost.

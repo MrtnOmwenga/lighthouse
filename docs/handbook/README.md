@@ -20,7 +20,7 @@ an assistant that answers questions about the portfolio by looking things up her
 | 8 | Testing and CI | *to be written* |
 
 **Other projects:** [Redacted (the RBAC-API repository)](redacted/README.md), reviewed in eight
-parts; [GhostChat](ghostchat/README.md), reviewed in three; [offline-driver](offline-driver/README.md), in two.
+parts; [GhostChat](ghostchat/README.md), reviewed in three; [offline-driver](offline-driver/README.md), in two; [living-docs](living-docs/README.md), in three.
 
 The pages describe the code on `main` as of the `verified` date in each. The review they came from
 produced a build list; most of it has since been built, and each page's "known gaps" is what
