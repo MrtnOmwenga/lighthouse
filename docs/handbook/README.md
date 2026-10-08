@@ -19,8 +19,8 @@ an assistant that answers questions about the portfolio by looking things up her
 | 7 | [The public site](07-public-site.md) | Server-rendered pages, content as validated YAML, live figures joined from the monitors, how the status page is worked out, and the launch page that wakes a sleeping demo |
 | 8 | Testing and CI | *to be written* |
 
-**Other projects:** [Redacted (the RBAC-API repository)](redacted/README.md), being reviewed part by
-part.
+**Other projects:** [Redacted (the RBAC-API repository)](redacted/README.md), reviewed in eight
+parts; [GhostChat](ghostchat/README.md), being reviewed in three.
 
 The pages describe the code on `main` as of the `verified` date in each. The review they came from
 produced a build list; most of it has since been built, and each page's "known gaps" is what
