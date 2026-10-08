@@ -17,3 +17,4 @@ Carried over from the Lighthouse build:
 | # | What | Why | Size |
 |---|---|---|---|
 | R5 | **Pagination on list endpoints.** | Lists return the newest 100 rows and no way to ask for more. | S |
+| R6 | **Make it impossible to write an endpoint that forgets to ask** (Martin's idea, 2026-10-08): each route declares its action (a decorator), and a test fails for any route that declares none. The check itself stays in the service, because it needs the resource loaded first. | `authorize` is a call each service method must remember. The generated matrix proves the endpoints it knows about; nothing catches a new route that was never added to it. | M |
