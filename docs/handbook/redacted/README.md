@@ -14,7 +14,7 @@ these pages are in that repository.
 | 3 | [Signing in: passwords, tokens and API keys](03-signing-in.md) | Argon2id, one answer for every failed sign-in, what the access token is for, refresh-token rotation and what it catches, API keys, lockout and rate limits |
 | 4 | [The audit log](04-audit-log.md) | What is recorded, why it commits with the change, the hash chain and what it can and can't detect, keeping order under concurrency |
 | 5 | [Sections, clearances and redaction](05-redaction.md) | Two independent checks, why a section is a separate document, word-level marks and server-made projections, what a redaction still reveals |
-| 6 | Live collaboration | *to be written* |
+| 6 | [Live collaboration](06-live-collaboration.md) | How simultaneous edits merge (a CRDT), who may connect to what, re-checking open connections when permissions change, the race that was found and closed |
 | 7 | The demo | *to be written* |
 | 8 | Testing and the pipeline | *to be written* |
 

@@ -49,3 +49,11 @@ Carried over from the Lighthouse build:
 |---|---|---|---|
 | R16 | **Decide what a document's title and `body` are:** classify them like a section, or drop `body` now that content lives in sections. | Sections are redacted; the title and the original body field are shown to anyone who can open the document. | M |
 | R17 | *(Optional)* **Compartments:** a need-to-know label on a section, held by named members, beside the clearance ladder. | Real classification isn't one ladder; "secret" doesn't mean every secret-cleared person. | L |
+
+## From Part 6: live collaboration
+
+| # | What | Why | Size |
+|---|---|---|---|
+| R18 | **Re-check open connections on a timer as well as on announcements:** at least when a share's expiry passes, and when a member signs out. | A socket is only re-checked when a change is announced. A temporary share that runs out, or a sign-out, leaves it open as it was. | M |
+| R19 | **Compact long-lived sections** (re-encode the current state periodically). | Tombstones and history only grow. | S |
+| R20 | **Lock only the connections a change could affect,** not every editor in the organization. | Any permission change briefly makes every section in the organization read-only. | M |
