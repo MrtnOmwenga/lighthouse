@@ -67,6 +67,25 @@ Two things follow from this design:
 - **A request is all or nothing.** A document can't be created without its audit event, or the
   other way round.
 
+## Why does Lighthouse do this differently, and which is right?
+
+Each fits its own workload.
+
+| | Redacted: one transaction per request | Lighthouse: a transaction where one is needed |
+|---|---|---|
+| What a request is | A short read or write on behalf of a signed-in member | Often something slow: a probe of another site can take 30 seconds |
+| What it gains | The role is fresh on every request; a write and its audit event commit together; no handler can forget to scope its queries | No database connection is held while waiting on the network; anonymous pages need no tenant at all |
+| What it costs | A connection is held for the whole request, and a failure rolls back everything, including the record that it was attempted | Each piece of code must open its own tenant transaction; a multi-step operation is only atomic if it is written inside one |
+| Why that cost is acceptable | Requests are short, and every request is authenticated, so there is always a tenant | Most traffic is public pages and background checks, where holding a transaction would be waste or harm |
+
+Holding a transaction open across a 30-second probe would pin a connection and keep a row locked
+for no reason, so Lighthouse claims a monitor in one short transaction, probes with none, and
+records in another. Redacted has no such waits in a request, and what it sells is correctness of
+access and of the audit record, which one transaction gives for free.
+
+The rule underneath both: **keep a transaction as short as the work that must be atomic, and
+never hold one across something slow that you don't control.**
+
 ## How does deep code find the transaction?
 
 A service three calls down needs the request's transaction and principal. Passing them through
