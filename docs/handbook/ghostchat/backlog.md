@@ -25,3 +25,17 @@ Carried over from the Lighthouse build:
 |---|---|---|---|
 | G7 | **Forward secrecy:** the Double Ratchet for direct messages, MLS for rooms. | Message keys are sealed to long-lived keys, so a leaked private key opens every past message sealed to it. The largest gap, and the design document's own "next". | L |
 | G8 | **Let a new device detect withheld messages:** each participant signs "I have seen this conversation up to number N", and devices compare. | A chain shows a change in the middle, not that the server stopped delivering the newest messages. | M |
+
+## From Part 3: identity
+
+| # | What | Why | Size |
+|---|---|---|---|
+| G9 | **Anchor the log from an outside clock,** not the server's own timer (a scheduled call, as Lighthouse's tick). | The daily timestamp runs on a timer that doesn't fire while the Cloud Run instance is idle. | S |
+| G10 | **Carry "verified" marks across devices** (keep them in the vault). | Which contacts were verified is stored in one browser. | S |
+
+## Ideas for a later version (Martin, 2026-10-08)
+
+| # | What | Why | Size |
+|---|---|---|---|
+| G11 | **Deniable authorship with a zero-knowledge proof:** show the recipient that a legitimate participant wrote a message, without a signature they can show a third party. | A signature proves authorship to anyone, for ever. | L |
+| G12 | **Hide the sender from the server:** a proof of "I am a member of this room" without saying which member. | The server sees who sends every message; encryption can't hide that. | L |

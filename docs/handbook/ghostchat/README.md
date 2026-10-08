@@ -11,7 +11,7 @@ on these pages are in that repository; its own `docs/DESIGN.md` is the full secu
 |---|---|---|
 | 1 | [Accounts and keys](01-accounts-and-keys.md) | Why the server never receives the password, the key vault, the recovery phrase, signing in on a new device, the session |
 | 2 | [Messages](02-messages.md) | How one message is encrypted and signed, the hash chain, two people sending at once, deletion, rooms and files in brief |
-| 3 | Identity as it stands | *to be written* |
+| 3 | [Identity as it stands](03-identity.md) | What an identity is, key rotation with pre-committed next keys, the transparency log and its Bitcoin anchor, safety numbers, and what a decentralised identity would still need |
 
 Rooms, attachments, the real-time layer and the tests are covered briefly inside those pages, not
 separately. What the review finds that should be built or fixed is in the
