@@ -54,16 +54,55 @@
   const launcher = el('button', { type: 'button', className: 'guide-launcher', textContent: 'Ask the guide' });
   launcher.setAttribute('aria-haspopup', 'dialog');
 
+  // Taking the reader to a heading on one of this site's pages, and marking it for a moment so the
+  // eye lands on it. The address is always one of this site's own: a path and an anchor.
+  const PLACE = /^\/(?:projects\/[a-z0-9-]+|about)#[a-z0-9-]+$/;
+  const POINT = 'lh_guide_point';
+  const point = (id) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+    // On a narrow screen the window would cover what is being pointed at: it steps aside.
+    if (innerWidth <= 560 && !panel.hidden) open(false);
+    target.classList.add('guide-point');
+    setTimeout(() => target.classList.remove('guide-point'), 6000);
+  };
+  const place = (route, label) => {
+    const link = el('a', { href: route, className: 'guide-place', textContent: label });
+    link.addEventListener('click', (e) => {
+      const [path, id] = route.split('#');
+      if (path === location.pathname) {
+        e.preventDefault();
+        history.replaceState(history.state, '', route);
+        point(id);
+      } else {
+        try { sessionStorage.setItem(POINT, id); } catch { /* arrives at the top of the page instead */ }
+      }
+    });
+    return link;
+  };
+  try {
+    const arriving = sessionStorage.getItem(POINT);
+    sessionStorage.removeItem(POINT);
+    if (arriving && location.hash === `#${arriving}`) setTimeout(() => point(arriving), 300);
+  } catch { /* nothing to point at */ }
+
   const show = (turn) => {
     const item = el('div', { className: `guide-turn ${turn.from}${turn.kind ? ` ${turn.kind}` : ''}` }, el('p', { textContent: turn.text }));
     if (turn.sources && turn.sources.length) {
       const list = el('ul', { className: 'guide-sources' });
       list.setAttribute('aria-label', 'Where this comes from');
-      for (const s of turn.sources) list.append(el('li', { textContent: `${NAMES[s.project] || s.project} · ${s.heading}` }));
-      item.append(el('p', { className: 'label', textContent: 'From the handbook' }), list);
+      for (const s of turn.sources) {
+        const label = `${NAMES[s.project] || s.project} · ${s.heading}`;
+        list.append(typeof s.route === 'string' && PLACE.test(s.route) ? el('li', {}, place(s.route, label)) : el('li', { textContent: label }));
+      }
+      item.append(el('p', { className: 'label', textContent: 'Where this comes from' }), list);
     }
     const next = turn.further_reading;
-    if (next && STORIES[next.project]) {
+    if (next && typeof next.route === 'string' && PLACE.test(next.route)) {
+      item.append(el('p', { className: 'guide-next' }, 'Read more: ', place(next.route, `${NAMES[next.project] || next.project} · ${next.heading}`)));
+    } else if (next && STORIES[next.project]) {
       item.append(el('p', { className: 'guide-next' }, 'Read more: ', el('a', { href: STORIES[next.project], textContent: next.project === 'background' ? 'About Martin' : `the ${NAMES[next.project]} story` })));
     }
     log.append(item);
