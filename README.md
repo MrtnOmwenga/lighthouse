@@ -22,7 +22,7 @@ the monitoring in a sandbox, without an account.
   tested, and what it doesn't do yet.
 - **A launch page for every demo.** Launching one shows "Developing: starting Redacted" with a five-part technical introduction that advances on its
   own. Lighthouse polls the demo's health address (which would also wake a sleeping one); when it answers, a LIVE bar
-  drops in, and the demo opens once the introduction ends (or at once, with "Skip intro"). A demo
+  drops in, and the demo opens once the introduction ends (or at once, with the button beside the status, which waits with the demo). A demo
   with a guided tour (Redacted has two: one that plays itself, one that guides you) offers it at
   the end instead.
 - **An About page** built from the CV ([screenshot](docs/about.png)).

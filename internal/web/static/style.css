@@ -277,6 +277,17 @@ p { margin: 0; }
 .launch { flex: 1; display: flex; align-items: center; justify-content: center; padding: 28px var(--gutter); }
 .launch-inner { width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 20px; }
 .developing { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; font-family: var(--sans); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 12px 0; }
+.slide .main[hidden] { display: none; }
+.developing { position: relative; }
+/* A band that sweeps along the bottom of the status while the demo starts, and fills when it is up. */
+.developing .starting { position: absolute; left: 0; right: 0; bottom: -1px; height: 4px; overflow: hidden; background: var(--rule); }
+.developing .starting span { display: block; width: 30%; height: 100%; background: var(--claret); animation: starting 1.4s ease-in-out infinite; }
+.ready .developing .starting span { width: 100%; background: var(--good); animation: none; }
+.slow .developing .starting span { background: var(--fair); }
+@keyframes starting { from { transform: translateX(-100%); } to { transform: translateX(334%); } }
+.developing .button[disabled] { opacity: 0.55; cursor: progress; }
+.developing .button[disabled]::before { content: ""; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sweep 0.9s linear infinite; }
+.developing .button[disabled]:hover { background: transparent; color: var(--ink); }
 .developing .tag { display: inline-flex; align-items: center; gap: 8px; color: var(--claret); font-weight: 700; font-size: 14px; letter-spacing: 0.1em; }
 .developing .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--claret); animation: pulse 1.2s ease-in-out infinite; }
 .developing .what { font-size: 18px; font-weight: 600; }
@@ -462,7 +473,8 @@ html:not(.arch-ready) .arch-embed { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .beam, .ticker .track, .developing .pulse, .live-band .live { animation: none; }
+  .beam, .ticker .track, .developing .pulse, .live-band .live, .developing .button[disabled]::before { animation: none; }
+  .developing .starting span { animation: none; width: 100%; opacity: 0.5; }
   .ticker .viewport { overflow-x: auto; }
   .js .slide { transition: none; transform: none; }
 }

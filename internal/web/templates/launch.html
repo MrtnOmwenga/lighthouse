@@ -19,7 +19,8 @@
       <span class="what" data-state>Starting {{.Name}}</span>
       <span class="detail" data-detail>Checking that the demo is up; this usually takes a few seconds. Meanwhile, the story so far.</span>
       <span class="clock" data-clock aria-hidden="true"></span>
-      <button type="button" class="button" data-skip hidden>Skip intro</button>
+      <button type="button" class="button" data-skip disabled hidden>Starting…</button>
+      <span class="starting" aria-hidden="true"><span></span></span>
     </div>
 
     {{if $.Architecture}}<div class="launch-cols"><div class="launch-try"><p class="label">What to try</p>{{end}}
@@ -41,11 +42,27 @@
         {{end}}
       </li>
       {{end}}
-      <li class="slide final" aria-label="Ready" data-part="Open it">
-        <div class="main">
-          <span class="kicker">{{.Name}}</span>
+      {{/* The last part has three versions; the script shows the one that is true. Without the
+           script only the plain links show. */}}
+      <li class="slide final" aria-label="Open it" data-part="Open it">
+        <div class="main" data-when="waiting" hidden>
+          <span class="kicker">{{.Name}} · Starting</span>
+          <h1>Still waking up</h1>
+          <p class="plain">{{.Name}} sleeps when nobody is using it, and is starting now.</p>
+          <p class="hood">That usually takes well under a minute. This page will say so the moment it is up, and the button at the top will take you straight in.</p>
+        </div>
+        <div class="main" data-when="slow" hidden>
+          <span class="kicker">{{.Name}} · Delayed</span>
+          <h1>Taking longer than usual</h1>
+          <p class="plain">It still hasn't answered. It may be on its way, or something may be wrong.</p>
+          <div class="choices">
+            <a class="button" href="{{.Demo}}" data-open>Try opening it anyway</a>
+            <a class="button" href="/projects/{{.Slug}}">Read the story meanwhile</a>
+          </div>
+        </div>
+        <div class="main" data-when="ready">
+          <span class="kicker">{{.Name}} · Live</span>
           <h1>Ready when you are</h1>
-          <p class="plain" data-waiting>Still starting. It will open as soon as it's up.</p>
           <div class="choices">
             <a class="button primary" href="{{.Demo}}" data-open>Open {{.Name}} →</a>
             {{with .Tour}}<a class="button" href="{{.}}" data-tour-link>Watch the guided tour</a>{{end}}

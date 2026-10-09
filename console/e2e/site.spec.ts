@@ -302,3 +302,51 @@ test.describe('the architecture page', () => {
     await context.close();
   });
 });
+
+// The launch page while a demo wakes: it shows that something is starting, and the button beside
+// the status goes straight in the moment the demo answers.
+test('the launch page waits visibly, then opens the demo on one click', async ({ page }) => {
+  let up = false;
+  await page.route('**/api/projects/redacted/ready', (route) => route.fulfill({ json: { ready: up } }));
+  await page.goto('/go/redacted');
+  const demo = await page.locator('[data-launch]').getAttribute('data-demo');
+  await page.route(`${demo}/**`, (route) => route.fulfill({ contentType: 'text/html', body: '<title>the demo</title>' }));
+  const status = page.locator('.developing');
+  const button = status.getByRole('button');
+  await expect(button).toHaveText('Starting…');
+  await expect(button).toBeDisabled();
+  await expect(status.locator('.starting')).toBeVisible();
+  await expect(status).toContainText('Starting Redacted');
+  // The last part doesn't claim to be ready, or offer a way in, before the demo is.
+  await page.getByRole('button', { name: 'Open it' }).click();
+  await expect(page.getByRole('heading', { name: 'Still waking up' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ready when you are' })).toBeHidden();
+  await expect(page.locator('.slide.final').getByRole('link', { name: 'Open Redacted →' })).toBeHidden();
+
+  up = true;
+  await expect(button).toHaveText('Open Redacted →', { timeout: 10_000 });
+  await expect(button).toBeEnabled();
+  await expect(status).toContainText('Redacted is ready.');
+  await expect(page.getByRole('heading', { name: 'Ready when you are' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Still waking up' })).toBeHidden();
+  await expect(page.locator('.slide.final').getByRole('link', { name: 'Open Redacted →' })).toBeVisible();
+  await button.click();
+  await expect(page).toHaveTitle('the demo');
+});
+
+test('a demo that is slow to wake is called delayed, and only then offered unopened', async ({ page }) => {
+  await page.clock.install();
+  await page.route('**/api/projects/redacted/ready', (route) => route.fulfill({ json: { ready: false } }));
+  await page.goto('/go/redacted');
+  const status = page.locator('.developing');
+  await expect(status.getByRole('button')).toBeDisabled();
+  await page.clock.fastForward('03:05');
+  await expect(status).toContainText('DELAYED');
+  await expect(status.getByRole('button')).toHaveText('Open anyway');
+  await expect(status.getByRole('button')).toBeEnabled();
+  await page.getByRole('button', { name: 'Open it' }).click();
+  await expect(page.getByRole('heading', { name: 'Taking longer than usual' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Try opening it anyway' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ready when you are' })).toBeHidden();
+});
+
