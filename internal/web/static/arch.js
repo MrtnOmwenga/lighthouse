@@ -1,10 +1,13 @@
-// Architecture pages. The server sends the parts as links in lanes and the walk-through as a
-// list; this draws the wires between the parts, shows a part's details when it is chosen, and
-// plays a walk-through one step at a time. Without it the page is still a complete, plain list.
+// A project's architecture diagram, on its own page and inside the story and launch pages. The
+// server sends the parts as links in lanes, and the connections and walk-through as hidden lists;
+// this draws the wires between the parts, shows a part's details when it is chosen, and plays the
+// walk-through one step at a time.
 (() => {
   const root = document.querySelector('[data-arch]');
   const now = document.getElementById('arch-now');
-  if (!root || !now) return;
+  const stage = root?.closest('.arch-stage');
+  const data = stage?.querySelector('.arch-data');
+  if (!root || !now || !data) return;
 
   const NS = 'http://www.w3.org/2000/svg';
   const svg = root.querySelector('.arch-wires');
@@ -22,15 +25,16 @@
 
   const parts = new Map([...root.querySelectorAll('.arch-part')].map((a) => [a.dataset.part, a]));
   const name = (id) => parts.get(id)?.textContent ?? id;
-  const links = [...document.querySelectorAll('.arch-links li')]
-    .map((li) => ({ from: li.dataset.from, to: li.dataset.to, label: li.querySelector('.l')?.textContent ?? '' }))
+  const links = [...data.querySelectorAll('[data-link]')]
+    .map((li) => ({ from: li.dataset.from, to: li.dataset.to, label: li.textContent }))
     .filter((l) => parts.has(l.from) && parts.has(l.to));
-  const flows = [...document.querySelectorAll('.arch-flow')].map((section) => ({
-    id: section.dataset.flow,
-    title: section.querySelector('h2').textContent,
-    steps: [...section.querySelectorAll('.arch-steps li')].map((li) => ({
-      li, from: li.dataset.from, to: li.dataset.to,
-      title: li.querySelector('.t').textContent, text: li.querySelector('p').textContent,
+  // `li` is the step in the page's own list of the walk-through, where there is one.
+  const flows = [...data.querySelectorAll('[data-flow]')].map((list) => ({
+    id: list.dataset.flow,
+    title: list.dataset.title,
+    steps: [...list.children].map((li, i) => ({
+      li: document.getElementById(`flow-${list.dataset.flow}-${i + 1}`),
+      from: li.dataset.from, to: li.dataset.to, title: li.dataset.title, text: li.textContent,
     })),
   }));
 
@@ -55,6 +59,8 @@
   const dotNumber = shape('text', { y: 4.5 });
   dot.append(shape('circle', { r: 11 }), dotNumber);
   let travelling = 0;
+  // True until the reader chooses something: the walk-through plays by itself while it is on screen.
+  let unasked = false;
   const SHORT = 18;
   const pace = () => (still.matches ? 5000 : 2600); // milliseconds a step is shown for while playing
 
@@ -253,6 +259,7 @@
     for (const f of flows) {
       f.steps.forEach((s, i) => {
         const current = state.kind === 'step' && f === flow && i === state.index;
+        if (!s.li) return;
         s.li.classList.toggle('current', current);
         if (current) s.li.setAttribute('aria-current', 'step'); else s.li.removeAttribute('aria-current');
       });
@@ -263,7 +270,7 @@
 
   function describe() {
     if (state.kind === 'part') {
-      const about = document.getElementById(`about-${state.id}`);
+      const about = data.querySelector(`[data-about="${state.id}"]`);
       kicker.textContent = 'This part';
       const joins = el('ul');
       for (const l of links) {
@@ -300,14 +307,17 @@
   // `keep` is a step taken by the page itself while playing: it doesn't stop the playing, and
   // doesn't move the reader, who may be reading something else by now.
   function show(to, { keep = false } = {}) {
-    if (!keep) stop();
+    if (!keep) {
+      stop();
+      unasked = false;
+    }
     state = to;
     paint();
     describe();
     // The diagram and the words about it are read together, so both are kept on screen.
-    const top = root.getBoundingClientRect().top;
+    const top = stage.getBoundingClientRect().top;
     const bottom = now.getBoundingClientRect().bottom;
-    if (!keep && to.kind !== 'none' && (top < 0 || bottom > innerHeight)) root.scrollIntoView({ block: 'start', behavior: still.matches ? 'auto' : 'smooth' });
+    if (!keep && to.kind !== 'none' && (top < 0 || bottom > innerHeight)) stage.scrollIntoView({ block: 'start', behavior: still.matches ? 'auto' : 'smooth' });
   }
 
   function stop() {
@@ -321,10 +331,10 @@
   }
 
   // Playing goes round: after the last step it starts again, until something else is chosen.
-  // Started by the page on arrival (`unasked`), it leaves the reader where they are.
-  function start(unasked = false) {
+  // `byItself` is the page playing unasked, which leaves the reader where they are.
+  function start(byItself = false) {
     const onward = () => (state.kind === 'step' && state.index < flow.steps.length - 1 ? state.index + 1 : 0);
-    stepTo(onward(), { keep: unasked });
+    stepTo(onward(), { keep: byItself });
     timer = setInterval(() => stepTo(onward(), { keep: true }), pace());
     describe();
   }
@@ -355,7 +365,7 @@
     });
   }
   for (const f of flows) {
-    f.steps.forEach((s, i) => s.li.querySelector('a').addEventListener('click', (e) => {
+    f.steps.forEach((s, i) => s.li?.querySelector('a').addEventListener('click', (e) => {
       e.preventDefault();
       flow = f;
       stepTo(i);
@@ -372,7 +382,11 @@
   back?.addEventListener('click', () => stepTo(state.index - 1));
   next?.addEventListener('click', () => stepTo(state.kind === 'step' ? state.index + 1 : 0));
   play?.addEventListener('click', () => {
-    if (timer) { stop(); describe(); } else start();
+    if (timer) {
+      stop();
+      unasked = false;
+      describe();
+    } else start();
   });
   clear?.addEventListener('click', () => show({ kind: 'none' }));
   document.addEventListener('keydown', (e) => {
@@ -387,8 +401,17 @@
   describe();
   new ResizeObserver(() => draw()).observe(root);
   document.fonts?.ready.then(draw);
-  // The walk-through plays by itself on arrival, unless the address asked for something in
-  // particular or the reader has asked for less motion.
+  // The walk-through plays by itself whenever the diagram is on screen, and rests when it isn't,
+  // unless the address asked for something in particular or the reader has asked for less motion.
   if (location.hash && follow(location.hash.slice(1))) return;
-  if (flow && !still.matches) start(true);
+  if (!flow || still.matches) return;
+  unasked = true;
+  new IntersectionObserver(([seen]) => {
+    if (!unasked) return;
+    if (seen.isIntersecting && !timer) start(true);
+    else if (!seen.isIntersecting && timer) {
+      stop();
+      describe();
+    }
+  }, { threshold: 0.35 }).observe(root);
 })();

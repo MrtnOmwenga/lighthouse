@@ -130,7 +130,6 @@ profile:
 projects:
   - slug: redacted
     name: Redacted
-    architecture_draft: true
     kicker: Redacted · Security · Live demo · Secrets black out mid-sentence
     headline: "Multi-tenant access control where hidden text is never sent: PostgreSQL row-level security and 605 tests"
     standfirst: >-

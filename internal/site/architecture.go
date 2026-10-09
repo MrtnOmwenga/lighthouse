@@ -36,6 +36,9 @@ type Part struct {
 	// Handbook names the handbook page that explains the part. The assistant uses it; the page
 	// doesn't show it.
 	Handbook string `yaml:"handbook"`
+	// Story is the heading in the project's story on this site that says more about the part:
+	// problem, solution, testing, limits, or decision-<the decision's title as an anchor>.
+	Story string `yaml:"story"`
 }
 
 type Connection struct {
@@ -83,6 +86,29 @@ func (a *Architecture) Name(id string) string {
 // CodeLink is where a part's file can be read. HEAD follows the repository's default branch.
 func (a *Architecture) CodeLink(path string) string {
 	return strings.TrimSuffix(a.Repository, "/") + "/blob/HEAD/" + path
+}
+
+var notAnchor = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Anchor turns a title into the id its heading carries: "Fail closed, then recover" becomes
+// "fail-closed-then-recover".
+func Anchor(title string) string {
+	return strings.Trim(notAnchor.ReplaceAllString(strings.ToLower(title), "-"), "-")
+}
+
+// Anchors are the headings of a story that a part of a diagram may point at.
+func (st *Story) Anchors() map[string]bool {
+	out := map[string]bool{"problem": true, "solution": true, "decisions": true}
+	if st.Testing.Title != "" {
+		out["testing"] = true
+	}
+	if st.Limits.Title != "" {
+		out["limits"] = true
+	}
+	for _, d := range st.Decisions {
+		out["decision-"+Anchor(d.Title)] = true
+	}
+	return out
 }
 
 var (

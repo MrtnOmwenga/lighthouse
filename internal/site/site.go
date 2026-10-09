@@ -249,6 +249,15 @@ func Load(dir, domain string) (*Site, error) {
 			continue
 		}
 		problems = append(problems, a.validate("architecture/"+p.Slug+".yaml")...)
+		// A part may point into the story; the heading it names has to be there.
+		for _, part := range a.Parts {
+			if part.Story == "" {
+				continue
+			}
+			if st := s.Stories[p.Slug]; st == nil || !st.Anchors()[part.Story] {
+				problems = append(problems, fmt.Sprintf("architecture/%s.yaml: part %s: the story has no heading %q", p.Slug, part.ID, part.Story))
+			}
+		}
 		s.Architectures[p.Slug] = a
 	}
 	problems = append(problems, s.validate()...)

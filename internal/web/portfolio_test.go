@@ -202,7 +202,8 @@ func TestTheShippedSiteRenders(t *testing.T) {
 }
 
 // A project's architecture page: the diagram's parts and walk-through are in the page itself, so
-// it reads without its script. A draft answers but isn't linked, listed or indexed.
+// it reads without its script. The story and the launch page carry the same diagram. A draft
+// answers but isn't linked, shown elsewhere, listed or indexed.
 func TestTheArchitecturePage(t *testing.T) {
 	t.Parallel()
 	content, err := site.Load("../../deploy/site", "example.dev")
@@ -229,8 +230,21 @@ func TestTheArchitecturePage(t *testing.T) {
 	if inlineStyle.MatchString(page) || strings.Contains(page, "noindex") {
 		t.Error("the page has an inline style, or hides from search engines though it is published")
 	}
-	if !strings.Contains(b.expect(200, "GET", "/projects/redacted", nil), `href="/projects/redacted/architecture"`) {
-		t.Error("the story doesn't link to its diagram")
+	if !strings.Contains(page, `href="/projects/redacted#decision-fail-closed-on-permission-changes"`) {
+		t.Error("a part doesn't lead into the story")
+	}
+	story := b.expect(200, "GET", "/projects/redacted", nil)
+	for _, want := range []string{`href="/projects/redacted/architecture"`, `id="decision-fail-closed-on-permission-changes"`, `data-arch`, `href="/projects/redacted/architecture#about-api"`, `/static/arch.js?v=`} {
+		if !strings.Contains(story, want) {
+			t.Errorf("the story is missing %q", want)
+		}
+	}
+	launch := b.expect(200, "GET", "/go/redacted", nil)
+	if !strings.Contains(launch, `data-arch`) || !strings.Contains(launch, "How it works") || inlineStyle.MatchString(launch) || inlineStyle.MatchString(story) {
+		t.Error("the launch page doesn't carry the diagram, or a page uses an inline style")
+	}
+	if strings.Contains(b.expect(200, "GET", "/go/ghostchat", nil), "data-arch") {
+		t.Error("a project without a diagram shows one on its launch page")
 	}
 	if !strings.Contains(b.expect(200, "GET", "/sitemap.xml", nil), "/projects/redacted/architecture") {
 		t.Error("the sitemap leaves the diagram out")
@@ -247,5 +261,8 @@ func TestTheArchitecturePage(t *testing.T) {
 	}
 	if strings.Contains(b.expect(200, "GET", "/projects/redacted", nil), "/architecture") || strings.Contains(b.expect(200, "GET", "/sitemap.xml", nil), "/architecture") {
 		t.Error("a draft is linked from the story or listed in the sitemap")
+	}
+	if strings.Contains(b.expect(200, "GET", "/go/redacted", nil), "data-arch") {
+		t.Error("a draft is shown on the launch page")
 	}
 }

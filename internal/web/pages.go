@@ -36,7 +36,17 @@ var funcs = template.FuncMap{
 		}
 		return humanDuration(end.Sub(i.StartedAt))
 	},
-	"inc": func(i int) int { return i + 1 },
+	"inc":    func(i int) int { return i + 1 },
+	"anchor": site.Anchor,
+	// stage gathers what the "arch-stage" template needs. Embedded in another page, its parts link
+	// to the architecture page; on that page they link to the list below the diagram.
+	"stage": func(c *card, a *site.Architecture, embedded bool) map[string]any {
+		m := map[string]any{"Arch": a, "Slug": c.Slug, "Embedded": embedded, "Base": "", "HasStory": c.HasStory}
+		if embedded {
+			m["Base"] = "/projects/" + c.Slug + "/architecture"
+		}
+		return m
+	},
 	// lowerFirst lets a title continue a sentence: "A Director demotes" becomes "a Director demotes".
 	"lowerFirst": func(v string) string {
 		if v == "" {

@@ -20,6 +20,14 @@ func TestTheShippedDiagramsAreValid(t *testing.T) {
 	if got := a.CodeLink("src/policy/policy.ts"); got != "https://github.com/MrtnOmwenga/RBAC-API/blob/HEAD/src/policy/policy.ts" {
 		t.Errorf("code link: %s", got)
 	}
+	if Anchor("Fail closed, then recover!") != "fail-closed-then-recover" {
+		t.Errorf("anchor: %q", Anchor("Fail closed, then recover!"))
+	}
+	for _, p := range a.Parts {
+		if p.Story != "" && !s.Stories["redacted"].Anchors()[p.Story] {
+			t.Errorf("part %s points at a heading the story doesn't have: %s", p.ID, p.Story)
+		}
+	}
 	if len(a.In("database")) == 0 || a.Name("api") != "REST API" || a.Name("nobody") != "nobody" {
 		t.Error("parts are found by lane and named by id")
 	}
@@ -71,6 +79,10 @@ func TestADiagramIsCheckedBeforeItIsDrawn(t *testing.T) {
 		if err := project(t, changed); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: want %q, got %v", name, c.want, err)
 		}
+	}
+	// A part may point into the story, but only at a heading that is there; this project has no story.
+	if err := project(t, strings.Replace(validDiagram, "code: [src/a.ts]", "code: [src/a.ts], story: solution", 1)); err == nil || !strings.Contains(err.Error(), `the story has no heading "solution"`) {
+		t.Errorf("a part pointing at a missing heading: %v", err)
 	}
 	if err := project(t, validDiagram+"colour: red\n"); err == nil || !strings.Contains(err.Error(), "colour") {
 		t.Errorf("an unknown key must fail loudly: %v", err)

@@ -172,13 +172,14 @@ test.describe('the architecture page', () => {
   test('draws the connections, and a chosen part says what it does and where its code is', async ({ page }) => {
     await page.goto(address);
     const diagram = page.locator('#diagram');
-    await expect(diagram.locator('.arch-wire')).toHaveCount(await page.locator('.arch-links li').count());
+    await expect(diagram.locator('.arch-wire')).toHaveCount(12);
     const now = page.locator('#arch-now');
 
     await diagram.getByRole('button', { name: 'Collaboration server' }).click();
     await expect(now).toContainText('re-checks every connection when access changes');
     await expect(now.getByRole('link', { name: 'src/realtime/realtime.service.ts' })).toHaveAttribute('href', /github\.com\/MrtnOmwenga\/RBAC-API\/blob\/HEAD\/src\/realtime\/realtime\.service\.ts$/);
     await expect(now).toContainText('← Notifications: every instance hears');
+    await expect(now.getByRole('link', { name: /More about this in the story/ })).toHaveAttribute('href', '/projects/redacted#decision-fail-closed-on-permission-changes');
     // Its own connections are lit and labelled; a part it doesn't touch steps back.
     await expect(diagram.locator('.arch-wire.on')).toHaveCount(6);
     await expect(page.locator('#part-realtime')).toHaveAttribute('aria-pressed', 'true');
@@ -263,6 +264,31 @@ test.describe('the architecture page', () => {
     await expect(page.locator('#arch-now')).toContainText('One file of plain functions');
   });
 
+  test('the story and the launch page carry the same diagram, playing while it is on screen', async ({ page }) => {
+    await page.goto('/projects/redacted');
+    const now = page.locator('#arch-now');
+    // Further down the story: it waits until the reader gets there, and rests when they leave.
+    await expect(page.locator('#diagram .arch-wire')).toHaveCount(12);
+    await expect(now.getByRole('button', { name: 'Play' })).toBeVisible();
+    await page.locator('#diagram').scrollIntoViewIfNeeded();
+    await expect(now).toContainText(/Step \d of 7/);
+    await expect(now.getByRole('button', { name: 'Pause' })).toBeVisible();
+    await page.evaluate(() => scrollTo(0, 0));
+    await expect(now.getByRole('button', { name: 'Play' })).toBeVisible();
+    // The static figure it replaces is gone, and a part leads to the decision that explains it.
+    await expect(page.locator('.arch-fallback')).toBeHidden();
+    await page.locator('#part-tables').click();
+    await page.getByRole('link', { name: /More about this in the story/ }).click();
+    await expect(page).toHaveURL(/#decision-let-the-database-enforce-tenancy$/);
+    await expect(page.locator('#decision-let-the-database-enforce-tenancy')).toBeInViewport();
+
+    await page.goto('/go/redacted');
+    await expect(page.getByText('How it works', { exact: true })).toBeVisible();
+    await expect(page.getByText('What to try', { exact: true })).toBeVisible();
+    await expect(page.locator('#diagram .arch-wire')).toHaveCount(12);
+    await expect(page.locator('#arch-now')).toContainText(/Step \d of 7/);
+  });
+
   test('without its script it is still a complete page', async ({ browser }) => {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
@@ -271,7 +297,10 @@ test.describe('the architecture page', () => {
     await expect(page.locator('#flow-demote-3')).toContainText('Before anything is saved');
     await expect(page.locator('#part-policy')).toHaveAttribute('href', '#about-policy');
     await expect(page.locator('#about-policy')).toContainText('One file of plain functions');
-    await expect(page.locator('.arch-links')).toContainText('REST API → Notifications announces');
+    // In the story, the plain figure stands in for the diagram.
+    await page.goto('/projects/redacted');
+    await expect(page.locator('#diagram')).toBeHidden();
+    await expect(page.locator('.arch-fallback')).toBeVisible();
     await context.close();
   });
 });

@@ -114,7 +114,7 @@ func (s *Server) storyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cards := s.cards(s.statusOrEmpty(r))
-	data := pageData{Section: "projects", Story: story}
+	data := pageData{Section: "projects", Story: story, Architecture: s.diagram(slug)}
 	for i := range cards {
 		if cards[i].Slug == slug {
 			data.Card = &cards[i]
@@ -129,6 +129,15 @@ func (s *Server) storyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	s.render(w, http.StatusOK, "story.html", data)
+}
+
+// diagram is the project's architecture if it is ready to be shown on other pages: nil for a
+// project without one, or one still marked as a draft.
+func (s *Server) diagram(slug string) *site.Architecture {
+	if p, ok := s.Site.Find(slug); !ok || p.ArchitectureDraft {
+		return nil
+	}
+	return s.Site.Architectures[slug]
 }
 
 // architecturePage draws a project's system: its parts, how they connect, and flows through them.
@@ -185,7 +194,7 @@ func (s *Server) launchPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := card{Project: p, HasStory: s.Site.Stories[p.Slug] != nil}
-	s.render(w, http.StatusOK, "launch.html", pageData{Section: "projects", Card: &c})
+	s.render(w, http.StatusOK, "launch.html", pageData{Section: "projects", Card: &c, Architecture: s.diagram(c.Slug)})
 }
 
 // publicProject is what the API says about a project: never its health address, which usually
