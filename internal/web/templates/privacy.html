@@ -21,8 +21,13 @@
     <p>The console's sign-in is for the site's owner. If you sign in with GitHub and aren't him, the attempt is refused and recorded with your GitHub username and account number, so he can see who has tried. Starting a sandbox records nothing about you, and sets one cookie that keeps you in it for two hours.</p>
     <h2>What is public</h2>
     <p>The systems page shows how many people read about each project over the last 30 days. Any figure below five is shown only as "fewer than 5", so the public numbers can't be used to tell that one particular person visited.</p>
+    <h2 id="assistant">The assistant</h2>
+    <p>The site has an assistant, "the guide", that answers questions about the projects and their author. It does nothing unless you open it and ask.</p>
+    <p>If you ask it something, your question and its reply are stored for 90 days and then deleted, so the owner can see what people ask and what it got wrong. Email addresses and phone numbers are taken out of a question before it is stored. Please don't type anything private into it.</p>
+    <p>To answer, your question and the conversation so far are sent to a language model run by Anthropic, a US company, and to the assistant's own service, which runs on Amazon Web Services in Sweden. Neither is sent your cookies, and the service keeps your IP address only as a pseudonym that changes every day, used to limit how many questions one visitor can ask.</p>
+    <p>While you use it, the conversation is kept in this browser tab so it follows you from page to page. It is gone when you close the tab.</p>
     <h2>How long it is kept</h2>
-    <p>Visit records are deleted after 90 days. The code that does all of this is <a href="https://github.com/MrtnOmwenga/lighthouse">open source</a>.</p>
+    <p>Visit records, and conversations with the assistant, are deleted after 90 days. The code that does all of this is <a href="https://github.com/MrtnOmwenga/lighthouse">open source</a>.</p>
   </article>
 </section>
 </main>

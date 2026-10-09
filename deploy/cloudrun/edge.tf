@@ -50,7 +50,12 @@ resource "cloudflare_workers_script" "edge" {
     {
       type = "secret_text"
       name = "EDGE_SECRETS" # one per host, so a service can't pass as the edge to another
-      text = jsonencode({ for k, host in local.hosts : host => local.edge_secret[k] })
+      text = jsonencode(merge({ for k, host in local.hosts : host => local.edge_secret[k] }, var.guide_origin == "" ? {} : { guide = var.guide_edge_secret }))
+    },
+    {
+      type = "plain_text"
+      name = "GUIDE" # the site's assistant, a separate service: its one path is sent there
+      text = var.guide_origin == "" ? "null" : jsonencode({ host = local.hosts.lighthouse, path = "/api/guide", origin = var.guide_origin })
     },
     {
       type = "plain_text"
