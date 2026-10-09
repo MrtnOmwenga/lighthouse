@@ -1,4 +1,4 @@
-# Copied from docs/architecture.yaml in the project's repository at commit e521bd3 by
+# Copied from docs/architecture.yaml in the project's repository at commit 320ebb5 by
 # tools/sync-architecture.sh. Edit it there, where a test checks it against the code.
 # How Redacted is put together, as data. The portfolio site draws this file as an interactive
 # diagram (martinomwenga.com/projects/redacted/architecture) and its assistant reads it to walk
