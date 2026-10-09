@@ -453,3 +453,8 @@ p { margin: 0; }
   .guide-hello { right: 12px; bottom: 72px; }
 }
 @media print { .guide-launcher, .guide-panel, .guide-hello { display: none; } }
+
+/* Where the guide is pointing: the heading it took the reader to, marked for a few seconds. */
+.guide-place { color: var(--claret); }
+.guide-point { scroll-margin-top: 24px; background: linear-gradient(90deg, var(--claret-light), transparent 85%); box-shadow: -8px 0 0 var(--claret); transition: background 0.6s; }
+@media (prefers-reduced-motion: reduce) { .guide-point { transition: none; } }
