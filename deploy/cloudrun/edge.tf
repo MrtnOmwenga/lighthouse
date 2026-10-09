@@ -8,6 +8,16 @@ locals {
     redacted   = "redacted.${var.domain}"
     ghostchat  = "ghostchat.${var.domain}"
   }
+  edge_secret = {
+    lighthouse = random_password.edge.result
+    redacted   = random_password.edge_demo["redacted"].result
+    ghostchat  = random_password.edge_demo["ghostchat"].result
+  }
+  # Work that would otherwise wait on a timer inside an instance that isn't running.
+  edge_cron = {
+    redacted  = ["/internal/housekeeping"] # expired demo agencies and dead refresh tokens
+    ghostchat = ["/internal/anchor"]       # the key log's daily timestamp, and upgrading pending ones
+  }
 }
 
 resource "cloudflare_dns_record" "app" {
@@ -38,16 +48,22 @@ resource "cloudflare_workers_script" "edge" {
       text = jsonencode([local.hosts.lighthouse])
     },
     {
-      type = "plain_text"
-      name = "SECRET_HOSTS"
-      text = jsonencode([local.hosts.lighthouse])
+      type = "secret_text"
+      name = "EDGE_SECRETS" # one per host, so a service can't pass as the edge to another
+      text = jsonencode({ for k, host in local.hosts : host => local.edge_secret[k] })
     },
     {
-      type = "secret_text"
-      name = "EDGE_SECRET"
-      text = random_password.edge.result
+      type = "plain_text"
+      name = "CRON" # paths the Worker calls each hour: a clock for services that scale to zero
+      text = jsonencode({ for k, paths in local.edge_cron : local.hosts[k] => paths })
     },
   ]
+}
+
+resource "cloudflare_workers_cron_trigger" "edge" {
+  account_id  = var.cloudflare_account_id
+  script_name = cloudflare_workers_script.edge.script_name
+  schedules   = [{ cron = "17 * * * *" }]
 }
 
 resource "cloudflare_workers_route" "app" {
