@@ -146,7 +146,8 @@ test.describe('the guide', () => {
     await panel.getByLabel('Your question').press('Enter');
     await expect(panel).toContainText('Two years as tech lead.');
     // The CV when the site links one, otherwise his email: either way an address taken from this page.
-    const cv = await page.locator('.masthead a[href$=".pdf"]').getAttribute('href').catch(() => null);
+    const cvLink = page.locator('.masthead a[href$=".pdf"]');
+    const cv = (await cvLink.count()) ? await cvLink.getAttribute('href') : null;
     const mail = await page.locator('.foot a[href^="mailto:"]').first().getAttribute('href');
     const link = panel.getByRole('link', { name: cv ? 'Download Martin’s CV' : 'Write to Martin' });
     await expect(link).toHaveAttribute('href', cv ?? mail ?? 'missing');
