@@ -139,7 +139,7 @@
     requestAnimationFrame(frame);
   }
 
-  // Poll until the demo answers: quickly at first, then more patiently. After three minutes say
+  // Poll until the demo answers: quickly at first, then more patiently. After a minute say
   // so, and let the visitor try it anyway.
   let warned = false;
   async function poll() {
@@ -148,7 +148,7 @@
       if (res.ok && (await res.json()).ready) return markReady();
     } catch { /* offline for a moment: keep trying */ }
     const waited = Date.now() - started;
-    if (waited > 180_000 && !warned) {
+    if (waited > 60_000 && !warned) {
       warned = true;
       root.classList.add('slow');
       tag.textContent = 'DELAYED';

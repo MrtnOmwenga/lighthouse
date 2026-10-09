@@ -340,7 +340,7 @@ test('a demo that is slow to wake is called delayed, and only then offered unope
   await page.goto('/go/redacted');
   const status = page.locator('.developing');
   await expect(status.getByRole('button')).toBeDisabled();
-  await page.clock.fastForward('03:05');
+  await page.clock.fastForward('01:05');
   await expect(status).toContainText('DELAYED');
   await expect(status.getByRole('button')).toHaveText('Open anyway');
   await expect(status.getByRole('button')).toBeEnabled();
