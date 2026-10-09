@@ -56,7 +56,7 @@
 
   // Taking the reader to a heading on one of this site's pages, and marking it for a moment so the
   // eye lands on it. The address is always one of this site's own: a path and an anchor.
-  const PLACE = /^\/(?:projects\/[a-z0-9-]+|about)#[a-z0-9-]+$/;
+  const PLACE = /^\/(?:projects\/[a-z0-9-]+(?:\/architecture)?|about)#[a-z0-9-]+$/;
   const POINT = 'lh_guide_point';
   const point = (id) => {
     const target = document.getElementById(id);
@@ -66,6 +66,8 @@
     // On a narrow screen the window would cover what is being pointed at: it steps aside.
     if (innerWidth <= 560 && !panel.hidden) open(false);
     target.classList.add('guide-point');
+    // A page that can do more than be scrolled to (an architecture diagram) listens for this.
+    target.dispatchEvent(new CustomEvent('guide:point', { bubbles: true }));
     setTimeout(() => target.classList.remove('guide-point'), 6000);
   };
   const place = (route, label) => {

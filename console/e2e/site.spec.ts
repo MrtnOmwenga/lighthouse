@@ -163,3 +163,97 @@ test.describe('the guide', () => {
     await expect(page.getByRole('link', { name: 'Projects' }).first()).toBeVisible();
   });
 });
+
+// A project's architecture page: parts in lanes, wires drawn between them, and a walk-through
+// that lights one connection at a time.
+test.describe('the architecture page', () => {
+  const address = '/projects/redacted/architecture';
+
+  test('draws the connections, and a chosen part says what it does and where its code is', async ({ page }) => {
+    await page.goto(address);
+    const diagram = page.locator('#diagram');
+    await expect(diagram.locator('.arch-wire')).toHaveCount(await page.locator('.arch-links li').count());
+    const now = page.locator('#arch-now');
+    await expect(now).toContainText('Select any part of the diagram');
+
+    await diagram.getByRole('button', { name: 'Collaboration server' }).click();
+    await expect(now).toContainText('re-checks every connection when access changes');
+    await expect(now.getByRole('link', { name: 'src/realtime/realtime.service.ts' })).toHaveAttribute('href', /github\.com\/MrtnOmwenga\/RBAC-API\/blob\/HEAD\/src\/realtime\/realtime\.service\.ts$/);
+    await expect(now).toContainText('← Notifications: every instance hears');
+    // Its own connections are lit and labelled; a part it doesn't touch steps back.
+    await expect(diagram.locator('.arch-wire.on')).toHaveCount(6);
+    await expect(page.locator('#part-realtime')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#part-audit')).not.toHaveClass(/near|sel/);
+
+    await page.keyboard.press('Escape');
+    await expect(now).toContainText('Select any part of the diagram');
+    await expect(diagram.locator('.arch-wire.on')).toHaveCount(0);
+  });
+
+  test('walks through a flow a step at a time, by button, by its list and by itself', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(address);
+    const now = page.locator('#arch-now');
+    const next = now.getByRole('button', { name: 'Next' });
+    await expect(now.getByRole('button', { name: 'Back' })).toBeDisabled();
+    await next.click();
+    await next.click();
+    await next.click();
+    await expect(now).toContainText('Step 3 of 7 · REST API → Collaboration server');
+    await expect(now).toContainText('Lock first');
+    await expect(page.locator('#flow-demote-3')).toHaveAttribute('aria-current', 'step');
+    await expect(page.locator('#part-api')).toHaveClass(/sel/);
+    await expect(page.locator('#part-realtime')).toHaveClass(/sel/);
+    await expect(page.locator('#diagram .arch-wire.live')).toHaveCount(1);
+    await expect(page.locator('#diagram .arch-wire.live text')).toHaveText('locks before commit');
+    // The diagram and the words about it stay on screen together.
+    await expect(page.locator('#diagram')).toBeInViewport();
+
+    await now.getByRole('button', { name: 'Back' }).click();
+    await expect(now).toContainText('May the Director do this?');
+    await page.getByRole('link', { name: /The editor locks/ }).click();
+    await expect(now).toContainText('Step 7 of 7');
+    await expect(next).toBeDisabled();
+
+    // Play starts again from the top and moves on without being asked.
+    await now.getByRole('button', { name: 'Play again' }).click();
+    await expect(now).toContainText('Step 1 of 7');
+    await expect(now.getByRole('button', { name: 'Pause' })).toBeVisible();
+    await expect(now).toContainText('Step 2 of 7', { timeout: 10_000 });
+    await now.getByRole('button', { name: 'Pause' }).click();
+    await now.getByRole('button', { name: 'Show everything' }).click();
+    await expect(page.locator('#diagram')).not.toHaveClass(/focus/);
+  });
+
+  test('an address names a part or a step, and the assistant points with the same addresses', async ({ page }) => {
+    await page.goto(`${address}#flow-demote-5`);
+    await expect(page.locator('#arch-now')).toContainText('Step 5 of 7 · Notifications → Collaboration server');
+
+    await page.route('**/api/guide', (route) => route.fulfill({ json: {
+      conversation: 'f'.repeat(24), kind: 'answer', text: 'One file of plain functions decides.',
+      sources: [{ id: 'arch/redacted#policy', project: 'redacted', page: 'Redacted architecture', heading: 'Policy', route: `${address}#part-policy` }],
+      further_reading: null,
+    } }));
+    await page.goto('/projects/redacted?guide=on');
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await panel.getByLabel('Your question').fill('Where are permissions decided?');
+    await panel.getByLabel('Your question').press('Enter');
+    await panel.getByRole('link', { name: /Policy/ }).click();
+    await expect(page).toHaveURL(/\/projects\/redacted\/architecture#part-policy$/);
+    await expect(page.locator('#part-policy')).toHaveClass(/sel/);
+    await expect(page.locator('#arch-now')).toContainText('One file of plain functions');
+  });
+
+  test('without its script it is still a complete page', async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.goto(address);
+    await expect(page.locator('#arch-now')).toBeHidden();
+    await expect(page.locator('#flow-demote-3')).toContainText('Before anything is saved');
+    await expect(page.locator('#part-policy')).toHaveAttribute('href', '#about-policy');
+    await expect(page.locator('#about-policy')).toContainText('One file of plain functions');
+    await expect(page.locator('.arch-links')).toContainText('REST API → Notifications announces');
+    await context.close();
+  });
+});

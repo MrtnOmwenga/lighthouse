@@ -18,6 +18,8 @@ type card struct {
 	Health    string   // up, down or unknown; empty without a public monitor
 	Uptime90d *float64 // percent
 	HasStory  bool
+	// HasDiagram: the project has an architecture page that is ready to be linked to.
+	HasDiagram bool
 }
 
 type tickerItem struct {
@@ -33,6 +35,7 @@ func (s *Server) cards(page status.Page) []card {
 	out := make([]card, len(s.Site.Projects))
 	for i, p := range s.Site.Projects {
 		c := card{Project: p, HasStory: s.Site.Stories[p.Slug] != nil}
+		c.HasDiagram = s.Site.Architectures[p.Slug] != nil && !p.ArchitectureDraft
 		if m, ok := monitors[p.Monitor]; ok && p.Monitor != "" {
 			c.Health, c.Uptime90d = m.Health, m.Uptime90d
 		}
@@ -128,6 +131,29 @@ func (s *Server) storyPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "story.html", data)
 }
 
+// architecturePage draws a project's system: its parts, how they connect, and flows through them.
+func (s *Server) architecturePage(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	arch := s.Site.Architectures[slug]
+	if arch == nil {
+		s.renderError(w, http.StatusNotFound, "No diagram here", "This project has no architecture page. The projects page lists them all.")
+		return
+	}
+	project, _ := s.Site.Find(slug)
+	data := pageData{Section: "projects", Architecture: arch, Draft: project.ArchitectureDraft}
+	cards := s.cards(s.statusOrEmpty(r))
+	for i := range cards {
+		if cards[i].Slug == slug {
+			data.Card = &cards[i]
+		}
+	}
+	if data.Draft {
+		w.Header().Set("X-Robots-Tag", "noindex")
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	s.render(w, http.StatusOK, "architecture.html", data)
+}
+
 func (s *Server) aboutPage(w http.ResponseWriter, _ *http.Request) {
 	if s.Site.Profile.About.Headline == "" {
 		s.renderError(w, http.StatusNotFound, "Not found", "There's no profile here yet.")
@@ -220,6 +246,9 @@ func (s *Server) sitemap(w http.ResponseWriter, _ *http.Request) {
 	for _, p := range s.Site.Projects {
 		if s.Site.Stories[p.Slug] != nil {
 			paths = append(paths, "/projects/"+p.Slug)
+		}
+		if s.Site.Architectures[p.Slug] != nil && !p.ArchitectureDraft {
+			paths = append(paths, "/projects/"+p.Slug+"/architecture")
 		}
 	}
 	if s.Site.Profile.About.Headline != "" {

@@ -37,6 +37,13 @@ var funcs = template.FuncMap{
 		return humanDuration(end.Sub(i.StartedAt))
 	},
 	"inc": func(i int) int { return i + 1 },
+	// lowerFirst lets a title continue a sentence: "A Director demotes" becomes "a Director demotes".
+	"lowerFirst": func(v string) string {
+		if v == "" {
+			return v
+		}
+		return strings.ToLower(v[:1]) + v[1:]
+	},
 	"minutes": func(m float64) string {
 		if m < 1 {
 			return "under a minute"
@@ -139,7 +146,10 @@ type pageData struct {
 	// a project's story and launch page
 	Card  *card
 	Story *site.Story
-	Next  *card
+	// a project's architecture page; Draft keeps it out of search engines
+	Architecture *site.Architecture
+	Draft        bool
+	Next         *card
 	// systems page
 	Readership []readershipRow
 	// incident page

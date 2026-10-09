@@ -14,6 +14,7 @@
     <p class="byline">By {{.Owner}}{{with $s.ReadMinutes}} · {{.}} min read{{end}}{{with $s.Updated}} · Updated {{.}}{{end}}</p>
     <div class="actions center">
       {{if $p.Demo}}<a class="button primary" href="/go/{{$p.Slug}}">Launch the demo →</a>{{end}}
+      {{if $p.HasDiagram}}<a class="button" href="/projects/{{$p.Slug}}/architecture">How it is built</a>{{end}}
       {{with $p.Repo}}<a class="button" href="{{.}}" rel="noopener">Code</a>{{end}}
       {{with $p.Docs}}<a class="button" href="{{.}}" rel="noopener">Design notes</a>{{end}}
     </div>

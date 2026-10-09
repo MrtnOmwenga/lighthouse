@@ -1,0 +1,91 @@
+{{$p := .Card}}{{$a := .Architecture}}{{template "head" (printf "%s: how it is put together · The Lighthouse" $p.Name)}}
+<meta name="description" content="{{$a.Summary}}">
+{{if .Draft}}<meta name="robots" content="noindex">{{end}}
+{{template "social" (social $ (printf "/projects/%s/architecture" $p.Slug) (printf "%s: %s" $p.Name $a.Title) $a.Summary)}}
+<script src="{{asset "arch.js"}}" defer></script>
+</head>
+<body>
+{{template "masthead" .}}
+<main id="main">
+<section class="wrap">
+  <div class="story-head">
+    <span class="kicker"><a href="/projects">Projects</a> / <a href="/projects/{{$p.Slug}}">{{$p.Name}}</a> / Architecture</span>
+    <h1>{{$a.Title}}</h1>
+    <p class="standfirst">{{$a.Summary}}</p>
+    <div class="actions center">
+      {{if $p.HasStory}}<a class="button" href="/projects/{{$p.Slug}}">Read the story</a>{{end}}
+      {{if $p.Demo}}<a class="button primary" href="/go/{{$p.Slug}}">Launch the demo →</a>{{end}}
+      <a class="button" href="{{$a.Repository}}" rel="noopener">Code</a>
+    </div>
+  </div>
+</section>
+
+<section class="wrap section grid">
+  <div class="span-12">
+    <div class="fig arch" id="diagram" data-arch>
+      <svg class="arch-wires" aria-hidden="true" focusable="false"></svg>
+      {{range $a.Lanes}}
+      <div class="arch-lane">
+        <span class="label">{{.Label}}</span>
+        <div class="arch-parts">
+          {{range $a.In .ID}}<a class="arch-part" id="part-{{.ID}}" href="#about-{{.ID}}" data-part="{{.ID}}">{{.Name}}</a>{{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  <div class="span-7 stack-sm">
+    <div class="panel arch-now" id="arch-now" hidden>
+      <p class="label" data-now-kicker>Start here</p>
+      <div class="arch-now-body" data-now-body aria-live="polite">
+        <p>Select any part of the diagram to see what it does and where its code is{{with $a.Flows}}, or press Next to walk through what happens when {{(index . 0).Title | lowerFirst}}{{end}}.</p>
+      </div>
+      {{if $a.Flows}}
+      <div class="arch-controls">
+        <button type="button" class="button" data-back disabled>Back</button>
+        <button type="button" class="button primary" data-next>Next</button>
+        <button type="button" class="button" data-play>Play</button>
+        <button type="button" class="button" data-clear hidden>Show everything</button>
+      </div>
+      {{end}}
+    </div>
+    <p class="caption arch-plain">The parts and how they connect are listed in full below.</p>
+  </div>
+
+  <aside class="span-5 rail">
+    {{range $a.Flows}}{{$f := .}}
+    <section class="arch-flow" id="flow-{{.ID}}" data-flow="{{.ID}}">
+      <p class="label">Walk-through</p>
+      <h2>{{.Title}}</h2>
+      {{with .Summary}}<p class="arch-flow-summary">{{.}}</p>{{end}}
+      <ol class="arch-steps">
+        {{range $i, $s := .Steps}}<li id="flow-{{$f.ID}}-{{inc $i}}" data-from="{{$s.From}}" data-to="{{$s.To}}">
+          <a href="#flow-{{$f.ID}}-{{inc $i}}"><span class="t">{{$s.Title}}</span><span class="r">{{$a.Name $s.From}} → {{$a.Name $s.To}}</span></a>
+          <p>{{$s.Text}}</p>
+        </li>{{end}}
+      </ol>
+      {{with .Proof}}<p class="caption"><strong>How we know:</strong> {{.}}</p>{{end}}
+    </section>
+    {{end}}
+  </aside>
+</section>
+
+<section class="wrap section">
+  <h2 id="parts" class="section-title">Every part</h2>
+  <div class="arch-list">
+    {{range $a.Parts}}
+    <article id="about-{{.ID}}" class="arch-about">
+      <h3>{{.Name}}</h3>
+      <p class="what">{{.What}}</p>
+      <p>{{.Detail}}</p>
+      {{if .Code}}<p class="arch-code"><span class="label">Code</span> {{range .Code}}<a href="{{$a.CodeLink .}}" rel="noopener">{{.}}</a> {{end}}</p>{{end}}
+    </article>
+    {{end}}
+  </div>
+  <h2 id="connections" class="section-title">How they connect</h2>
+  <ul class="arch-links">
+    {{range $a.Connections}}<li data-from="{{.From}}" data-to="{{.To}}"><span class="ends">{{$a.Name .From}} → {{$a.Name .To}}</span> <span class="l">{{.Label}}</span></li>{{end}}
+  </ul>
+</section>
+</main>
+{{template "foot" .}}
