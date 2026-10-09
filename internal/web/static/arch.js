@@ -112,6 +112,10 @@
       });
     }
 
+    // Two ends that nearly line up are made to: a jog of a few pixels reads as a mistake.
+    for (const wire of plan) {
+      if (wire.route === 'down' && Math.abs(wire.p.x - wire.q.x) < 12) wire.q = { ...wire.q, x: wire.p.x };
+    }
     // Wires between two rows run down, across and down again. Each gets its own height for the
     // part that runs across, so two wires in the same gap never lie on top of one another.
     // A wire whose way down is blocked by a part in a row between goes round by the nearer edge
