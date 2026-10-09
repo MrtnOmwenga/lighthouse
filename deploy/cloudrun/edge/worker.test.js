@@ -6,8 +6,9 @@ import worker from "./worker.js";
 const env = {
   ORIGINS: JSON.stringify({ "site.example": "https://site.run.app", "demo.site.example": "https://demo.run.app" }),
   PAGE_HOSTS: JSON.stringify(["site.example"]),
-  EDGE_SECRETS: JSON.stringify({ "site.example": "s3cret", "demo.site.example": "demo-s3cret" }),
+  EDGE_SECRETS: JSON.stringify({ "site.example": "s3cret", "demo.site.example": "demo-s3cret", guide: "guide-s3cret" }),
   CRON: JSON.stringify({ "demo.site.example": ["/internal/housekeeping"] }),
+  GUIDE: JSON.stringify({ host: "site.example", path: "/api/guide", origin: "https://guide.lambda.example" }),
 };
 const html = (text) => new Response(`<html><body><main>${text}</main></body></html>`, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=30" } });
 
@@ -22,7 +23,7 @@ beforeEach(() => {
     match: async (req) => store.get(req.url)?.clone(),
     put: async (req, res) => { store.set(req.url, res); },
   } };
-  globalThis.fetch = async (target, init) => { calls.push({ url: String(target), method: init.method, headers: new Headers(init.headers), cf: init.cf }); return origin(String(target)); };
+  globalThis.fetch = async (target, init) => { calls.push({ url: String(target), method: init.method, headers: new Headers(init.headers), cf: init.cf, body: init.body }); return origin(String(target)); };
   origin = () => html("v1");
 });
 const ask = async (url, headers = {}) => {
@@ -143,4 +144,39 @@ test("pages leave marked no-transform, so nothing rewrites them on the way out; 
   origin = () => json;
   const answer = await ask("https://demo.site.example/api/x");
   assert.equal(answer, json); // the very same response object: a WebSocket upgrade must pass through whole
+});
+
+test("a question for the assistant goes to its service with that service's secret, the visitor's address, and nothing else", async () => {
+  origin = () => new Response(JSON.stringify({ kind: "answer", text: "Yes." }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const res = await worker.fetch(new Request("https://site.example/api/guide", {
+    method: "POST", body: JSON.stringify({ message: "What is Redacted?" }),
+    headers: { Origin: "https://site.example", Cookie: "__Host-lh_session=owner", "CF-Connecting-IP": "203.0.113.7", "X-Edge-Secret": "forged", Authorization: "Bearer x" },
+  }), env, { waitUntil() {} });
+  assert.deepEqual(await res.json(), { kind: "answer", text: "Yes." });
+  assert.equal(res.headers.get("Cache-Control"), "no-store");
+  const [call] = calls;
+  assert.equal(call.url, "https://guide.lambda.example/api/guide");
+  assert.equal(call.body, JSON.stringify({ message: "What is Redacted?" }));
+  assert.deepEqual([...call.headers.keys()].sort(), ["content-type", "x-client-ip", "x-edge-secret"]); // no cookie, no authorization
+  assert.equal(call.headers.get("X-Edge-Secret"), "guide-s3cret");
+  assert.equal(call.headers.get("X-Client-IP"), "203.0.113.7");
+});
+
+test("the assistant's path takes only posts from this site's own pages, of a sane size, and only on its host", async () => {
+  origin = () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  const post = (headers, body = "{}", host = "site.example") => worker.fetch(new Request(`https://${host}/api/guide`, { method: "POST", body, headers }), env, { waitUntil() {} });
+  assert.equal((await worker.fetch(new Request("https://site.example/api/guide", { headers: { Origin: "https://site.example" } }), env, { waitUntil() {} })).status, 405);
+  assert.equal((await post({ Origin: "https://evil.example" })).status, 403);
+  assert.equal((await post({})).status, 403);
+  assert.equal((await post({ Origin: "https://site.example" }, "x".repeat(9000))).status, 413);
+  assert.equal(calls.length, 0); // none of those reached the service
+  await post({ Origin: "https://demo.site.example" }, "{}", "demo.site.example"); // another host: an ordinary path of that host
+  assert.equal(calls[0].url, "https://demo.run.app/api/guide");
+});
+
+test("when the assistant's service can't be reached, the visitor is told so, plainly, with a 200", async () => {
+  origin = () => { throw new Error("unreachable"); };
+  const res = await worker.fetch(new Request("https://site.example/api/guide", { method: "POST", body: "{}", headers: { Origin: "https://site.example" } }), env, { waitUntil() {} });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).kind, "limit");
 });

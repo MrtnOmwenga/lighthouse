@@ -71,3 +71,31 @@ func TestTaggedVisitsAreReportedAndAnnounced(t *testing.T) {
 		}
 	}
 }
+
+// The assistant is a separate service; this site carries only its window and its privacy notice.
+// The notice has to be there before anything is stored, so it ships with the window.
+func TestTheGuideShipsWithItsPrivacyNotice(t *testing.T) {
+	t.Parallel()
+	e := start(t, nil)
+	b := e.browser()
+	privacy := b.expect(200, "GET", "/privacy", nil)
+	for _, want := range []string{`id="assistant"`, "stored for 90 days", "Anthropic", "Amazon Web Services", "Email addresses and phone numbers are taken out"} {
+		if !strings.Contains(privacy, want) {
+			t.Errorf("the privacy page doesn't say %q", want)
+		}
+	}
+	front := b.expect(200, "GET", "/", nil)
+	if !strings.Contains(front, `/static/guide.js?v=`) {
+		t.Fatal("the guide's script isn't on the page")
+	}
+	script := b.expect(200, "GET", "/static/guide.js", nil)
+	// It is inert unless switched on, sends no cookies, and never writes a reply as markup.
+	for _, want := range []string{"localStorage.getItem('lh_guide') === '1'", "credentials: 'omit'", "textContent"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("guide.js: missing %q", want)
+		}
+	}
+	if strings.Contains(script, "innerHTML") {
+		t.Error("guide.js writes markup")
+	}
+}

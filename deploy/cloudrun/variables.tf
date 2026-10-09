@@ -101,3 +101,18 @@ variable "metrics_push_user" {
   default     = ""
   description = "The Prometheus instance's numeric user. Its token is kept in Infisical."
 }
+
+# The site's assistant (github.com/MrtnOmwenga/docent) runs on AWS. Its address and the secret it
+# expects come from that project's own Terraform; both are empty until it exists.
+variable "guide_origin" {
+  description = "The assistant's service address, or empty for none."
+  type        = string
+  default     = ""
+}
+
+variable "guide_edge_secret" {
+  description = "What the assistant's service expects the edge to send."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

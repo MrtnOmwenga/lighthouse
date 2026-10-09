@@ -28,6 +28,12 @@ export default {
     const origin = origins[url.hostname];
     if (!origin || url.pathname.startsWith("/internal/")) return new Response("Not found", { status: 404 });
 
+    // The site's assistant is a separate service (on AWS). Its one path is sent there, with that
+    // service's own secret and the visitor's address, and nothing else of the request: no cookies,
+    // so a signed-in session never leaves this site.
+    const guide = JSON.parse(env.GUIDE ?? "null");
+    if (guide && url.hostname === guide.host && url.pathname === guide.path) return toGuide(request, guide, env);
+
     const target = new URL(url.pathname + url.search, origin);
     const headers = new Headers(request.headers);
     headers.set("X-Client-IP", request.headers.get("CF-Connecting-IP") ?? "");
@@ -75,6 +81,32 @@ export default {
     await Promise.all(calls);
   },
 };
+
+const GUIDE_MAX_BYTES = 8_000;
+
+async function toGuide(request, guide, env) {
+  const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  if (request.method !== "POST") return json(405, { error: "POST only" });
+  // Only this site's own pages may ask: a browser on another site sends that site's Origin.
+  if (request.headers.get("Origin") !== `https://${guide.host}`) return json(403, { error: "not from this site" });
+  const body = await request.text();
+  if (body.length > GUIDE_MAX_BYTES) return json(413, { error: "too large" });
+  try {
+    const answer = await fetch(new URL(guide.path, guide.origin), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Edge-Secret": JSON.parse(env.EDGE_SECRETS).guide ?? "",
+        "X-Client-IP": request.headers.get("CF-Connecting-IP") ?? "",
+      },
+      body,
+    });
+    return json(answer.status, await answer.json());
+  } catch {
+    // The assistant being away must never look like the site being broken.
+    return json(200, { kind: "limit", limit: "unavailable", text: "I can't answer right now. The project pages have everything I'd draw on.", sources: [], further_reading: null });
+  }
+}
 
 // Pages leave the edge as the origin wrote them. Cloudflare otherwise edits HTML on its way out
 // (it was inserting its own analytics script into every page), and "no-transform" is the standard
