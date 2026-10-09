@@ -26,12 +26,12 @@ test.describe('the guide', () => {
 
   test('is absent until switched on in this browser, and the switch leaves the address clean', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Ask the guide' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toHaveCount(0);
     await page.goto('/?guide=on');
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole('button', { name: 'Ask the guide' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toBeVisible();
     await page.goto('/about?guide=off');
-    await expect(page.getByRole('button', { name: 'Ask the guide' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toHaveCount(0);
   });
 
   test('offers itself once on the front page, answers with its sources, and shows replies as text only', async ({ page }) => {
@@ -41,11 +41,11 @@ test.describe('the guide', () => {
       await route.fulfill({ json: reply });
     });
     await page.goto('/?guide=on');
-    const offer = page.getByRole('complementary', { name: 'An offer from the guide' });
-    await expect(offer).toContainText('an AI assistant');
+    const offer = page.getByRole('complementary', { name: 'An offer from Martin’s assistant' });
+    await expect(offer).toContainText('I’m Martin’s assistant');
     await offer.getByRole('button', { name: 'Ask a question' }).click();
 
-    const panel = page.getByRole('dialog', { name: /The guide/ });
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
     await expect(panel).toContainText('Questions are kept for 90 days');
     await panel.getByLabel('Your question').fill('How does Redacted hide text?');
     await panel.getByLabel('Your question').press('Enter');
@@ -60,7 +60,7 @@ test.describe('the guide', () => {
     // The conversation follows the reader to another page, and continues under the same id.
     await panel.getByRole('link', { name: 'the Redacted story' }).click();
     await expect(page).toHaveURL(/\/projects\/redacted$/);
-    const again = page.getByRole('dialog', { name: /The guide/ });
+    const again = page.getByRole('dialog', { name: 'Martin’s assistant' });
     await expect(again).toContainText('Each section is its own document.');
     await again.getByLabel('Your question').fill('And the audit log?');
     await again.getByRole('button', { name: 'Ask', exact: true }).click();
@@ -72,7 +72,7 @@ test.describe('the guide', () => {
     await expect(again).toBeHidden();
     await page.goto('/');
     await page.waitForTimeout(2000);
-    await expect(page.getByRole('complementary', { name: 'An offer from the guide' })).toHaveCount(0);
+    await expect(page.getByRole('complementary', { name: 'An offer from Martin’s assistant' })).toHaveCount(0);
   });
 
   test('takes the reader to the heading an answer points at, and marks it; refuses an address that isn\'t this site\'s', async ({ page }) => {
@@ -86,8 +86,8 @@ test.describe('the guide', () => {
       further_reading: { id: 'site/redacted#limits', project: 'redacted', page: 'Redacted', heading: 'What it does not do', route: '/projects/redacted#limits' },
     } }));
     await page.goto('/about?guide=on');
-    await page.getByRole('button', { name: 'Ask the guide' }).click();
-    const panel = page.getByRole('dialog', { name: /The guide/ });
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
     await panel.getByLabel('Your question').fill('What were the key decisions in Redacted?');
     await panel.getByLabel('Your question').press('Enter');
     const sources = panel.getByRole('list', { name: 'Where this comes from' });
@@ -102,7 +102,7 @@ test.describe('the guide', () => {
     await expect(heading).toBeInViewport();
 
     // Already on that page: the next place is reached without leaving it.
-    await page.getByRole('dialog', { name: /The guide/ }).getByRole('link', { name: /What it does not do/ }).click();
+    await page.getByRole('dialog', { name: 'Martin’s assistant' }).getByRole('link', { name: /What it does not do/ }).click();
     await expect(page).toHaveURL(/\/projects\/redacted#limits$/);
     await expect(page.locator('#limits')).toHaveClass(/guide-point/);
   });
@@ -110,9 +110,9 @@ test.describe('the guide', () => {
   test('when its service is away, it says so and the page carries on', async ({ page }) => {
     await page.route('**/api/guide', (route) => route.abort());
     await page.goto('/projects?guide=on');
-    await page.getByRole('button', { name: 'Ask the guide' }).click();
-    const panel = page.getByRole('dialog', { name: /The guide/ });
-    await panel.getByRole('button', { name: 'What has Martin built?' }).click();
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await panel.getByRole('button', { name: 'What is Martin strongest at?' }).click();
     await expect(panel).toContainText('I can’t answer right now');
     await expect(page.getByRole('link', { name: 'Projects' }).first()).toBeVisible();
   });

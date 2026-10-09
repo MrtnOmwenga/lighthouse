@@ -1,4 +1,4 @@
-// The guide: an assistant that answers questions about the projects and the person on this site.
+// Martin's assistant: an AI that answers questions about his projects and background.
 // It is a separate service (github.com/MrtnOmwenga/docent); this file is only its window.
 //
 // Three rules it keeps on this side:
@@ -23,7 +23,7 @@
 
   const STORIES = { lighthouse: '/projects/lighthouse', redacted: '/projects/redacted', ghostchat: '/projects/ghostchat', 'pair-bridge': '/projects/pair-bridge', background: '/about' };
   const NAMES = { lighthouse: 'Lighthouse', redacted: 'Redacted', ghostchat: 'GhostChat', 'offline-driver': 'offline-driver', 'living-docs': 'living-docs', 'pair-bridge': 'Pairbridge', background: 'About Martin' };
-  const STARTERS = ['What has Martin built?', 'How does Redacted keep classified text from readers without clearance?', 'Where does his experience stop?'];
+  const STARTERS = ['What is Martin strongest at?', 'What has he built, and which project should I look at first?', 'How does Redacted keep classified text from readers without clearance?'];
   const WAITING = ['Looking through the handbook…', 'Reading the relevant sections…', 'Checking it against the sources…', 'Writing it up…'];
   const KEY = 'lh_guide_talk';
 
@@ -45,13 +45,13 @@
   const send = el('button', { type: 'submit', className: 'button primary', textContent: 'Ask' });
   const form = el('form', { className: 'guide-form' }, input, send);
   const close = el('button', { type: 'button', className: 'guide-close', textContent: 'Close' });
-  const note = el('p', { className: 'guide-note' }, 'An AI assistant. It answers from Martin’s own notes and says where from. Questions are kept for 90 days. ', el('a', { href: '/privacy#assistant', textContent: 'Privacy' }));
+  const note = el('p', { className: 'guide-note' }, 'An AI. It answers from Martin’s own notes and code, and says where from. Questions are kept for 90 days. ', el('a', { href: '/privacy#assistant', textContent: 'Privacy' }));
   const panel = el('section', { className: 'guide-panel', hidden: true },
-    el('header', {}, el('div', {}, el('strong', { textContent: 'The guide' }), el('span', { textContent: 'Ask about the work on this site' })), close),
+    el('header', {}, el('div', {}, el('strong', { textContent: 'Martin’s assistant' }), el('span', { textContent: 'An AI that knows his work closely' })), close),
     log, form, note);
   panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'The guide: ask about the work on this site');
-  const launcher = el('button', { type: 'button', className: 'guide-launcher', textContent: 'Ask the guide' });
+  panel.setAttribute('aria-label', 'Martin’s assistant');
+  const launcher = el('button', { type: 'button', className: 'guide-launcher', textContent: 'Ask Martin’s assistant' });
   launcher.setAttribute('aria-haspopup', 'dialog');
 
   // Taking the reader to a heading on one of this site's pages, and marking it for a moment so the
@@ -111,7 +111,7 @@
   };
 
   const starters = () => {
-    const box = el('div', { className: 'guide-starters' }, el('p', { textContent: 'I’m the guide to this site: an AI assistant that knows Martin’s projects and background. Ask me anything about them, or start with one of these.' }));
+    const box = el('div', { className: 'guide-starters' }, el('p', { textContent: 'I’m Martin’s assistant: an AI that knows his projects, his code and his background closely. Ask me anything about them, or start here.' }));
     for (const q of STARTERS) {
       const b = el('button', { type: 'button', className: 'guide-starter', textContent: q });
       b.addEventListener('click', () => ask(q));
@@ -186,9 +186,9 @@
     const yes = el('button', { type: 'button', className: 'button primary', textContent: 'Ask a question' });
     const no = el('button', { type: 'button', className: 'button', textContent: 'Not now' });
     const hello = el('aside', { className: 'guide-hello' },
-      el('p', {}, el('strong', { textContent: 'Hello. ' }), 'I’m the guide to this site: an AI assistant that knows Martin’s projects and background. Have a question about the work here?'),
+      el('p', {}, el('strong', { textContent: 'Hello. ' }), 'I’m Martin’s assistant: an AI that knows his projects and background closely. Can I show you around, or answer a question?'),
       el('div', { className: 'guide-hello-actions' }, yes, no));
-    hello.setAttribute('aria-label', 'An offer from the guide');
+    hello.setAttribute('aria-label', 'An offer from Martin’s assistant');
     yes.addEventListener('click', () => { hello.remove(); open(true); });
     no.addEventListener('click', () => hello.remove());
     setTimeout(() => document.body.append(hello), 1500);
