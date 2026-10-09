@@ -53,6 +53,16 @@ Every choice below exists because a free allowance has a limit:
 
 A budget alert on the billing account is the safety net.
 
+### The CV
+
+The CV names employers and clients, which these repositories don't, so the file isn't in the
+repository. It lives in a small public bucket (`public.tf`) and `site.yaml` links to it. To
+replace it:
+
+```sh
+gcloud storage cp CV.pdf gs://<project>-public/martin-omwenga-cv.pdf --cache-control="public, max-age=300" --content-type=application/pdf
+```
+
 ### Security
 
 - **Nothing bypasses the edge.** Cloud Run URLs (`*.run.app`) are public. Each service runs with
