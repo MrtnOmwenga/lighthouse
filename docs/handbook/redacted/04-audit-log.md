@@ -10,7 +10,9 @@ sources:
   - src/common/crypto.ts
   - src/database/migrations.ts
   - test/audit.e2e-spec.ts
-verified: 2026-10-08
+  - src/auth/authentication.ts
+  - src/realtime/realtime.service.ts
+verified: 2026-10-09
 ---
 
 # The audit log
@@ -89,6 +91,53 @@ Before appending, `record` takes an advisory lock keyed on the organization
 last and writes 43. The lock is released automatically when the transaction ends, and it is per
 organization, so one tenant's writes never wait on another's.
 
+## Are refusals and reads recorded?
+
+Both, since 2026-10-09.
+
+**Refusals.** A 403 rolls back the request's transaction, which would take an audit event with
+it. So the refusal is written *afterwards, in a transaction of its own*: `access.denied`, with
+the member, the route as declared (`/documents/:id`), the action it needed and the resource.
+
+**Reads of classified text.** Opening a classified section over the live connection is recorded
+as `section.read`, with whether it was the full text or a copy with words barred out.
+
+Both would flood the log if every occurrence were written: a page left open is refused again on
+every re-fetch, and reconnects re-open sections. Each is recorded **once per member and target
+each quarter of an hour**.
+
+## How do you find something in it?
+
+- **Filter** by member, by action or a family of actions (`auth.`), by resource, by time, and
+  leave named actions out (`exclude=section.read`).
+- **Page** backwards with the link in the response.
+- **Export** as one JSON object per line, oldest first, with each event's hashes. The chain can
+  be re-verified from the file alone, without trusting the API it came from. A test does that,
+  then edits one line of the file and sees the break pinpointed.
+
+## What if someone rewrites the whole chain, or cuts off its end?
+
+The chain shows a change to *part* of the log. Two things it can't show:
+
+- every event from some point on rewritten, with all the later hashes recomputed;
+- the newest events simply deleted.
+
+Both leave a chain that verifies, because nothing outside the database remembers how it ended.
+
+A **checkpoint** is that memory: "this organization's log had N events and ended in hash H at
+time T", signed by the service with a key derived from its own secret, which the database doesn't
+hold.
+
+| Where a checkpoint comes from | Where it is kept |
+|---|---|
+| `GET /audit-events/checkpoint`, by anyone who may read the log | Wherever they keep it: an auditor's own files |
+| Housekeeping, for every organization whose log grew | The service's log stream, which the database owner can't edit |
+
+Later, `POST /audit-events/verify` takes a checkpoint and answers two questions: does the chain
+verify, and does event N still exist with hash H? Tests do both attacks. In each the chain says
+"fine" and the checkpoint says what happened: *the newest events were removed*, or *the log was
+rewritten*.
+
 ## Who can read it?
 
 Organization admins and auditors (`audit:read` in [Part 1](01-permissions.md)). The auditor role
@@ -105,17 +154,9 @@ exists for this: it can read everything in the organization and change nothing.
 
 ## Known gaps
 
-- **Someone who can rewrite the whole chain can't be caught.** The chain detects a change to part
-  of it. A database owner who alters an event and then recomputes every hash after it, or who
-  simply deletes the newest events, leaves a chain that verifies. Nothing outside the database
-  remembers what the latest hash was. The fix is an *anchor*: publish the latest hash somewhere
-  the database owner can't change (a signed checkpoint, a write-once bucket, an email to the
-  auditors) and compare against it.
-- **Refused actions aren't recorded.** A member who tries to open what they may not gets a 403 and
-  leaves no trace, because the refusal rolls back the transaction. Failed sign-ins are recorded
-  (they are returned as values, see [Part 3](03-signing-in.md)); failed authorization isn't. For
-  a security log, the attempts are often the interesting part.
-- **Reading isn't recorded.** The log says who changed a classified section, never who read it.
+- **A checkpoint is only as safe as where it is kept.** The service writes them to its own log
+  stream and hands them to whoever asks. Someone who controls the database *and* that log stream,
+  and holds no older checkpoint elsewhere, could still rewrite both.
 - **Every audited write in an organization waits its turn.** The lock makes writes within one
   organization strictly one at a time.
 - **Verifying reads the whole chain,** every time, into memory. There are no checkpoints.
@@ -154,3 +195,12 @@ attempts needs a second, separate write.
 **Why hash "canonical" JSON?**
 So the same event always hashes the same. Without a fixed key order, a harmless reordering of
 fields would look like tampering.
+
+**How do you record a refusal when the request's transaction rolls back?**
+Write it after the rollback, in a transaction of its own, and limit it to once per member, route
+and resource each quarter of an hour so a retrying client can't fill the log.
+
+**A database administrator rewrites history and recomputes every hash. How would you know?**
+From the chain alone, you wouldn't. You need a record of how the log ended that the administrator
+can't reach: here, signed checkpoints kept in the service's log stream and by auditors, checked
+against the chain later.

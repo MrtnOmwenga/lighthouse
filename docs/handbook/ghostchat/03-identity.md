@@ -13,7 +13,9 @@ sources:
   - backend/src/services/anchoring.js
   - backend/src/services/ots.js
   - test-vectors/
-verified: 2026-10-08
+  - frontend/src/lib/crypto/pins.js
+  - backend/src/edge.js
+verified: 2026-10-09
 ---
 
 # Identity as it stands
@@ -115,16 +117,34 @@ is the larger idea the `did:key` format was chosen to leave room for:
 - **An identity that isn't tied to one server.** The username, the key history and the log all
   live on GhostChat's server. The format is decentralised; the storage isn't.
 
+## Do verified marks follow you to another device?
+
+Yes, since 2026-10-09. The marks are kept on the server as **one encrypted blob per account**.
+
+- **The key** comes from the oldest encryption key in the vault. Every device that has unlocked
+  the vault can derive it, it survives key rotations (the vault keeps every key), and it needs no
+  password prompt.
+- **The server can't read the marks or invent one:** the encryption is authenticated, with the
+  account's identity bound in so a blob can't be moved to another account.
+- **Two devices can't drop each other's change:** a write names the version it was based on. The
+  second gets a refusal, re-reads, re-applies its one change and tries again.
+
+What the server can still do is serve an *older* copy. That can remove a recent mark or bring
+back a removed one. It can never create one.
+
+## What drives the daily anchoring now?
+
+A timer inside a server that has scaled to zero doesn't fire. The server now has a path that runs
+one anchoring round (`POST /internal/anchor`), which only the edge in front of it may call: the
+edge never forwards a visitor's request to `/internal/`, and the server refuses anything that
+doesn't carry the edge's secret. The edge's hourly scheduled call is written and waits on one
+account setting; until then the in-process timer still runs whenever the server is awake.
+
 ## Known gaps
 
 - **Trust on first use.** A browser accepts the log's signing key the first time it sees it, and a
   contact's key the first time it sees one. Everything after that is checked against the first.
   Only comparing safety numbers checks the first.
-- **Verification is remembered per browser.** Which contacts you verified is stored on that
-  device and doesn't follow you to another.
-- **The daily anchoring may not run daily.** It is driven by a timer inside the server, and on
-  Cloud Run an idle server gets no CPU, so it runs when the service happens to be awake. The same
-  fault Lighthouse and Redacted had with their timers.
 - **The phrase is the whole identity.** Lose it and the next rotation is impossible; leak it and
   the identity can be taken over, pre-rotation notwithstanding.
 - **Nothing deletes from the log.** Deleting an account erases messages and private keys; the

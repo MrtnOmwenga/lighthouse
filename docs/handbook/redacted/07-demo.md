@@ -14,7 +14,7 @@ sources:
   - web/src/session.ts
   - test/browser/redacted.spec.ts
   - test/browser/tour.spec.ts
-verified: 2026-10-08
+verified: 2026-10-09
 ---
 
 # The demo and its guided tours
@@ -119,22 +119,32 @@ the demo straight into one.
 `test/browser/redacted.spec.ts` covers the demo without the tour, including the test the whole
 project rests on: the Intern's browser never receives the text of sections above their clearance.
 
+## What changed after the review?
+
+- **Expired demos are cleared when a new one starts,** as well as on a timer. A timer inside an
+  idle serverless instance doesn't fire; a visitor starting a demo is a request, which does.
+- **On a phone, the Director sits above one other agent,** chosen with a switcher. All four panes
+  stay loaded; the tour switches to the agent each step is about, and its caption sits below the
+  panes instead of over the one showing the effect.
+- **"Play it for me" waits for each effect** to be on screen before it starts counting, so a slow
+  connection can't make a caption move on early.
+- **"Is this real?"** A panel where the visitor makes the requests and reads the server's answers
+  as they arrived: what the server says each of the four tokens is, the briefing fetched with the
+  Intern's token (redacted sections carry a rounded length and nothing else), and a request the
+  Intern's page has no control for, refused with a 403 that then shows in the Director's log. Its
+  first draft named a codename in its instructions, and the test that scans everything the
+  Intern's browser receives failed: the page's own script is something the Intern downloads.
+- **The surveillance log lists changes and refusals.** Who opened which classified section is in
+  the chain too; the desk leaves those out of its six lines so they don't bury the changes.
+
 ## Known gaps
 
-- **Demo organizations can outlive their two hours.** The clean-up runs on a timer inside the
-  server, and on Cloud Run an idle server gets no CPU, so the timer doesn't fire while nobody is
-  visiting. Expired demos are removed the next time the service is awake. Lighthouse had the same
-  problem with its scheduler, and solved it with an outside clock.
-- **Four panes need a wide screen.** Below 900 pixels they stack in a column, so the cause (the
-  Director's desk) and the effect (another agent's pane) aren't visible together.
 - **The page that hosts the panes can reach into them.** It is the same origin, which is how the
   tour drives them. The isolation that matters is at the network: each pane has its own token and
   connections. A stricter demo would put each pane on its own origin.
 - **All four tokens sit in one browser's session storage,** the Director's included, and last the
   whole two hours. Acceptable for a throwaway agency, and not how a real client should hold
   tokens ([Part 3](03-signing-in.md)).
-- **"Play it for me" is timed.** Each step stays on screen for a fixed number of seconds; on a
-  slow connection a caption can move on before its effect has finished appearing.
 - **It demonstrates one story.** API keys, department admins, auditors and temporary shares are in
   the API and its tests, and nowhere in the demo.
 

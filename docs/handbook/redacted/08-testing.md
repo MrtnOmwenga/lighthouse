@@ -11,7 +11,7 @@ sources:
   - load/smoke.js
   - .github/workflows/ci.yml
   - .github/workflows/flake-hunt.yml
-verified: 2026-10-08
+verified: 2026-10-09
 ---
 
 # Testing and the pipeline
@@ -50,18 +50,23 @@ only what is unusual about them.
   only sometimes is found on a schedule and not as a mystery red build.
 - **The README's permission table is checked in CI** against the policy it is generated from.
 
+## What was added on 2026-10-09?
+
+- **The pipeline matches Lighthouse's:** it starts when CI has passed, verifies the image's
+  signature, migrates, starts the new revision without traffic and checks it, moves traffic,
+  checks through the edge, and moves traffic back on failure. Seven checks are required before a
+  merge.
+- **Behaviour over time is tested** with real connections: a share running out, a token expiring,
+  a sign-out on one device leaving the other connected.
+- **Every migration is run down and up again** and the schemas compared.
+- **Every route must declare its action,** and a handler that skips its check is shown to fail.
+
 ## Known gaps
 
-- **The pipeline is the earlier one.** It releases on every push to the release branch, with no
-  signature check, no tested candidate and no rollback. Lighthouse's has all of those
-  ([its pipeline page](../01a-pipeline.md)).
 - **Nothing has run on more than one instance,** so the code that shares state between instances
   is untested where it matters.
-- **Migrations have no "down",** so there is no rollback to test.
 - **The load test is small and from one organization:** it guards against a regression, and says
   little about real capacity.
-- **Nothing tests behaviour over time:** a share expiring on an open connection, a token expiring
-  mid-session ([Part 6](06-live-collaboration.md)).
 
 ## Questions and answers
 

@@ -9,7 +9,11 @@ sources:
   - src/projects/projects.service.ts
   - scripts/policy-table.ts
   - test/authorization-matrix.e2e-spec.ts
-verified: 2026-10-07
+  - src/common/pagination.ts
+  - src/auth/authentication.ts
+  - test/declared-actions.e2e-spec.ts
+  - test/pagination.e2e-spec.ts
+verified: 2026-10-09
 ---
 
 # The permission model
@@ -123,6 +127,50 @@ it invisible (Part 2), and "forbidden" would confirm that it exists.
   each with the reason (the changed code behaves identically).
 - **The generated matrix** above, which tests the endpoints against the file.
 
+## What stops an endpoint forgetting to ask?
+
+The check is a call inside the service method, because it needs the resource loaded first: you
+can't ask "may they delete *this* document?" before you have the document. That makes it a line
+someone could leave out.
+
+So every route also **declares** the action it needs:
+
+```ts
+@Delete('documents/:id')
+@Requires('document:delete')
+```
+
+Declaring isn't checking. But each request keeps a note of every action the policy was asked
+about, and when the handler finishes, the request is held to its declaration:
+
+| The handler finished and… | Result |
+|---|---|
+| the policy was asked about the declared action | the answer goes out |
+| it never was | 500, and everything the request wrote is rolled back |
+| the route declares nothing at all | 500, and a test fails before it ships |
+
+A test rewrites the delete method to skip its check and sends a viewer's delete: the answer is
+500 and the document is still there. Another test walks every route and fails if one declares no
+action, or if the policy has an action no route needs.
+
+What this guarantees is that the policy was *consulted*. That its answer was obeyed is what the
+441-case matrix proves.
+
+## How are long lists returned?
+
+A list is a plain array of at most 100 rows. While there is more, the response carries the next
+page's address in a `Link` header.
+
+The pages are cut by **keyset**, not by offset: "the rows after this one", not "skip 200 rows".
+Two consequences:
+
+- Rows added or removed while someone is paging never shift what they see next.
+- A page costs the same however deep it is.
+
+The cursor is the last row's sort value and id. The timestamp is kept to the microsecond, because
+a JavaScript date rounds to the millisecond and rows created in one statement would then repeat
+or go missing. A test pages through 23 rows that share one timestamp and sees each exactly once.
+
 ## Known gaps
 
 - **The policy is code, not configuration.** Changing a permission is a release. An organization
@@ -131,11 +179,6 @@ it invisible (Part 2), and "forbidden" would confirm that it exists.
   shares, or two accounts.
 - **`own` needs the same department.** An editor moved to another department loses the right to
   edit what they wrote in the old one. That is deliberate, and surprising.
-- **Each endpoint must remember to ask.** `authorize` is a call inside the service method, not
-  something the framework applies. The matrix proves the endpoints it knows about, and the
-  database isolates organizations whatever the code does, but an endpoint written without the call
-  would leak across departments within an organization.
-- **Lists return the newest 100 rows,** with no way to ask for more.
 - **Role and reach are the whole vocabulary.** Rules like "only during working hours" or "only
   from the office network" (attribute-based access control) have no place to go.
 
@@ -168,3 +211,12 @@ the answer with what `can()` says. Another test fails if an action has no scenar
 
 **What does mutation testing tell you that coverage doesn't?**
 Coverage says a line ran. Mutation testing says a test would notice if the line were wrong.
+
+**How do you make sure a new endpoint checks permissions?**
+Each route declares the action it needs. The check itself is in the service, but the request fails
+with a 500 and rolls back if the policy was never asked about that action, and a test fails for
+any route with no declaration.
+
+**Why keyset paging and not page numbers?**
+Page numbers skip rows, so a row added meanwhile shifts every later page and deep pages get slow.
+A keyset cursor says "after this row": stable under changes, and the same cost at any depth.

@@ -10,7 +10,8 @@ sources:
   - docs/COLLABORATION.md
   - test/realtime.e2e-spec.ts
   - test/marked-words.e2e-spec.ts
-verified: 2026-10-08
+  - test/realtime-time.e2e-spec.ts
+verified: 2026-10-09
 ---
 
 # Live collaboration
@@ -115,6 +116,32 @@ The fix fails closed, then recovers:
 Each part has a test that fails without it: an edit sent right after a demotion never lands, and
 an edit refused during the lock is recovered.
 
+## What if access ends and nobody changed anything?
+
+Three things end access with no permission change to announce:
+
+| What happens | How the open connection finds out |
+|---|---|
+| A temporary share runs out | A sweep every 15 seconds asks, per organization with connections open, whether a share's expiry has passed since the last sweep. If so, that organization is re-checked. |
+| The token that opened the connection expires | The same sweep closes it. The client reconnects with a fresh token. |
+| The member signs out, or their session is revoked as stolen | Access tokens carry the session they came from. Ending a session is announced, and every server closes that session's connections. The member's other devices stay connected. |
+
+An open WebSocket keeps a serverless instance awake, so the sweep's timer runs whenever there is
+a connection for it to check. That is why a timer is acceptable here and wasn't for clean-up.
+
+## Does a change lock everyone?
+
+It used to: any permission change made every section in the organization read-only until the
+re-check finished. Now a change says how far it reaches:
+
+- **one member** (a role, a clearance, a disabled account),
+- **one document** (a share, a section's classification, a deletion),
+- or the whole organization.
+
+Only the connections inside that reach are locked and re-checked. The channels that only tell a
+page to re-fetch are always told, because a member with no access yet may just have been given
+some.
+
 ## What about classifying words while someone is reading them?
 
 The check happens **before an edit is applied** (the `guard` hook). The server decodes the
@@ -132,22 +159,18 @@ Here the order of two steps is the whole protection: disconnect, then apply.
 
 ## Known gaps
 
-- **A connection is only re-checked when something is announced.** Nothing re-checks on a timer.
-  A temporary share that simply runs out, a token that expires, or a member who signs out leaves
-  an open socket as it was until the next announced change in that organization or a reconnect.
-  (The REST API does refuse an expired share at once.)
 - **With several server instances, the lock isn't complete.** Only the instance that handled the
   change locks before commit; the others lock when the notification arrives, milliseconds later.
   The service has only ever run as one instance. Closing it fully means sending each
   organization's connections to one instance, or checking access on every incoming edit.
 - **A demoted editor's last keystrokes stay on their own screen.** The server refused them, so
   nobody else sees them and they aren't saved, but their page shows them until it reloads.
-- **Sections only grow.** Tombstones and history accumulate; nothing compacts a long-lived
-  section yet.
 - **Moving text between sections is copy and delete,** because sections are separate documents. A
   simultaneous edit to the moved text in its old place isn't carried along.
-- **Every permission change briefly locks every editor in the organization,** not only those it
-  affects.
+
+- **Long-lived sections keep their editing history.** Deleted text is discarded, but the record
+  that something was deleted there stays. Rebuilding a section from scratch would break any client
+  still holding the old history, so it isn't done.
 
 ## Questions and answers
 
@@ -184,3 +207,7 @@ token the page must send itself can't be used that way.
 
 **What happens to an edit that classifies words above another reader's clearance?**
 That reader is disconnected before the edit is applied, so nothing from then on reaches them.
+
+**A share expires while its guest has the document open. What happens?**
+Within 15 seconds a sweep notices that a share's expiry has passed, re-checks that organization's
+connections, and the guest's is closed. The member who shared it is untouched.

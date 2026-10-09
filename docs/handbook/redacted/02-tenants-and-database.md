@@ -9,7 +9,8 @@ sources:
   - src/auth/authentication.ts
   - src/common/lookups.ts
   - test/tenancy.e2e-spec.ts
-verified: 2026-10-08
+  - test/migrations.e2e-spec.ts
+verified: 2026-10-09
 ---
 
 # Tenants and the database
@@ -173,10 +174,24 @@ queries, and what is written is what runs.
 - the lookup functions return only ids;
 - over HTTP, another organization's ids are simply not found.
 
+## Can a migration be undone?
+
+Yes. Every migration has a `down` that reverses it, and `MIGRATE_TO=<name>` moves the schema to a
+named migration, forwards or backwards.
+
+A `down` nobody has run is a guess, so a test runs them: in a database of its own it applies
+every migration, undoes them all to an empty schema, applies them again, and compares the two
+schemas line by line (columns, constraints, indexes, row-level security policies, functions and
+grants).
+
+The release applies a migration *before* the new code takes traffic, so each one must also work
+with the code that is live: add first, remove in a later release.
+
+An API key's "last used" time is now written at most once a minute, so a read from an integration
+is a read.
+
 ## Known gaps
 
-- **Migrations can't be undone.** Each has an `up` and no `down`. Rolling one back means writing
-  the reverse by hand, under pressure.
 - **A request holds a database connection for its whole length.** One slow handler occupies one
   of a small pool; enough of them and other requests wait.
 - **An email belongs to one organization.** The unique index is across all tenants, which keeps
@@ -184,11 +199,6 @@ queries, and what is written is what runs.
   organizations with the same address.
 - **Members are never deleted by the application.** That protects the audit log's references and
   makes "erase my data" a job for the database owner.
-- **An API key's every request is a write.** Loading a key updates its `last_used_at`, so
-  read-only traffic from an integration still writes a row each time.
-- **A refused request leaves no trace in the audit log,** if the refusal is thrown inside the
-  handler: the rollback takes any audit event with it. (Part 4 looks at what is and isn't
-  recorded.)
 - **Isolation is by row, not by resource.** Organizations share tables, indexes and the pool; one
   very busy tenant could slow the others.
 

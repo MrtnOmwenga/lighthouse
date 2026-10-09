@@ -13,7 +13,9 @@ sources:
   - src/app.module.ts
   - test/auth.e2e-spec.ts
   - test/tokens.e2e-spec.ts
-verified: 2026-10-08
+  - src/auth/successor.ts
+  - src/housekeeping/housekeeping.service.ts
+verified: 2026-10-09
 ---
 
 # Signing in: passwords, tokens and API keys
@@ -106,6 +108,38 @@ first time both parties use it.
 
 Signing out revokes the family. Disabling a member revokes all their tokens.
 
+## What if two tabs refresh at the same moment?
+
+Both present the same refresh token. The second arrives after the first has spent it, which is
+exactly what a stolen copy looks like.
+
+So for ten seconds after a token is used, presenting it again returns **the pair it already
+produced**, and nobody is signed out.
+
+The difficulty: the server keeps only *hashes* of refresh tokens, so it can't hand the new token
+out a second time. The answer is to store the new token **sealed with a key derived from the old
+one**. The server can open it only while it is holding the old token, which is exactly when the
+second tab asks.
+
+| Who replays the used token | Within ten seconds | Later |
+|---|---|---|
+| The member's second tab | Gets the same pair | Signed out everywhere (as before) |
+| A thief | Gets the same pair as the member, not a line of tokens of their own | Family revoked |
+
+Theft is still caught, one step later: the thief and the member now hold the *same* token, so
+whoever refreshes next spends it, and the other's attempt is a reuse outside the window.
+
+## What happens to old refresh tokens?
+
+Housekeeping deletes the ones that can do nothing: expired, or revoked more than a day ago. A
+**used** token that hasn't expired is kept, because presenting it again is how a copy is noticed.
+
+The application's database role can't delete from that table, so the deletion is a function owned
+by the database owner that the application may only call.
+
+Signing out, or a detected reuse, also closes that session's live connections
+([Part 6](06-live-collaboration.md)).
+
 ## How do machines authenticate?
 
 With an API key, `rbac_<prefix>_<secret>`, sent in its own header (`X-API-Key`):
@@ -144,10 +178,6 @@ account is locked.
   what a programmatic client needs. This API chose the second.
 - **One signing secret, with no way to rotate it gracefully.** Changing `JWT_SECRET` invalidates
   every access token at once. Several services verifying tokens would call for asymmetric keys.
-- **Used and expired refresh tokens are never removed.** The application can't delete from that
-  table, and nothing else does, so it grows by one row per refresh.
-- **Two tabs refreshing at the same moment look like theft.** The second presents a token the
-  first just used, and the family is revoked: the member is signed out.
 - **The rate limit is counted in memory,** per instance, and resets when the container stops.
 - **No second factor, no password reset, no email verification.** Sign-up is open to anyone.
 
@@ -183,3 +213,8 @@ Its secret is 256 random bits. Slow hashes exist to protect guessable secrets; t
 **Why are a token and a key never both accepted?**
 Each has one header and one meaning. Accepting both would leave a choice about which wins, and
 choices in authentication are where bugs live.
+
+**How do you tell two tabs refreshing together from a stolen token?**
+You can't, at that moment. So a token used within the last ten seconds returns the pair it already
+produced, stored sealed under a key derived from the used token. A thief gains no separate line of
+tokens, and the next reuse outside the window revokes the family.

@@ -9,7 +9,8 @@ sources:
   - frontend/src/lib/keys.js
   - backend/src/routes/auth.js
   - backend/src/auth.js
-verified: 2026-10-08
+  - backend/src/models/session.js
+verified: 2026-10-09
 ---
 
 # Accounts and keys
@@ -107,14 +108,29 @@ After sign-in the server sets a cookie holding a signed token (a JWT), marked `H
 scripts can't read it), `Secure`, and `SameSite=Strict` (other sites can't cause it to be sent,
 which is why no separate anti-forgery token is needed).
 
+## What is a session, and how does it end?
+
+A session is **a row on the server**, named by a signed token in a cookie the page's scripts
+can't read. The signature stops anyone inventing a session. The row is what lets one be ended.
+
+| Event | Sessions ended |
+|---|---|
+| Sign out | That one. A copy of its cookie stops working at once, and its open sockets close |
+| Password changed | Every other session of that user |
+| Account recovered with the phrase | Every session, then a new one |
+| Account deleted | Every session |
+
+Before 2026-10-09 the token alone was the session: signing out deleted the cookie, and a copy
+made beforehand worked until it expired.
+
+The cost is one database lookup per request. That is the trade every revocable session makes.
+
 ## Known gaps
 
 - **The server delivers the code that does the encryption.** A malicious or compromised server
   could send JavaScript that leaks keys. This is the standing weakness of end-to-end encryption on
   the web. A strict content-security policy limits what the page can load; closing it properly
   needs a signed, packaged client, or a browser extension that checks the code's hash.
-- **Signing out doesn't end the session on the server.** The session is a signed token; signing
-  out deletes the cookie, and a copy of the token works until it expires.
 - **The phrase is everything.** Anyone who obtains it can regenerate every key the account will
   ever have. Replacing keys doesn't help, because the replacements come from the same phrase;
   only a reset to a new phrase does, and contacts are warned when that happens.
@@ -153,3 +169,7 @@ nothing that can be replayed.
 
 **What is the biggest weakness of end-to-end encryption in a browser?**
 The server supplies the code. The user has to trust that today's JavaScript is the honest one.
+
+**Why isn't a signed token enough for a session?**
+A signature proves the server issued it, and nothing can take that back before it expires. To end
+a session you need something on the server to delete: here, a row the token names.
