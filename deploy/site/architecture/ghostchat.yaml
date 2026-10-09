@@ -1,0 +1,191 @@
+# Copied from docs/architecture.yaml in the project's repository at commit 412ac4e by
+# tools/sync-architecture.sh. Edit it there, where a test checks it against the code.
+# How GhostChat is put together, as data. The portfolio site draws this file as an interactive
+# diagram (martinomwenga.com/projects/ghostchat/architecture) and its assistant reads it to walk
+# visitors through the system. A test (backend/tests/architecture.test.js) fails if a part names a
+# file that no longer exists, or a connection or step names a part that isn't here. `story` names
+# the heading on the site's story page that says more about a part; the site checks those itself.
+title: How GhostChat is put together
+summary: >-
+  Everything secret happens in the two browsers. The server in between checks, stores and relays
+  messages it can't read, can't write and can't quietly reorder, and publishes everyone's public
+  keys in a log it can't rewrite without being caught.
+repository: https://github.com/MrtnOmwenga/GhostChat
+
+lanes:
+  - id: browsers
+    label: In the two browsers
+  - id: server
+    label: The server (never holds a private key)
+  - id: database
+    label: MongoDB
+
+parts:
+  - id: vault
+    lane: browsers
+    name: Alice's keys
+    what: Alice's private keys, unlocked in her browser by half of her password.
+    detail: >-
+      The password is split before it leaves the device. One half signs in; the other opens a
+      vault of private keys that the server stores and can never open. A 24-word phrase can
+      rebuild every key the account will ever use.
+    code: [frontend/src/lib/crypto/vault.js, frontend/src/lib/crypto/password.js, frontend/src/lib/keystore.js]
+    handbook: ghostchat/01-accounts-and-keys
+    story: solution
+
+  - id: seal
+    lane: browsers
+    name: Lock and sign
+    what: Encrypts each message with a fresh key, links it to the one before, and signs the whole envelope.
+    detail: >-
+      The message key is sealed twice, to the recipient and to the sender. The envelope carries
+      its number in the conversation and the hash of the message before it, and the signature
+      covers both, so the order is part of what was signed.
+    code: [frontend/src/lib/crypto/envelope.js, frontend/src/lib/messaging.js]
+    handbook: ghostchat/02-messages
+    story: decision-verifiable-not-deniable
+
+  - id: open
+    lane: browsers
+    name: Check and open
+    what: Bob's browser checks the signature and the link to the previous message before it decrypts anything.
+    detail: >-
+      The server checks too, but that check is a courtesy. This one is the control: a forged,
+      edited, reordered or missing message shows up here as a broken link, and the conversation
+      says so.
+    code: [frontend/src/lib/messaging.js, frontend/src/lib/crypto/envelope.js]
+    handbook: ghostchat/02-messages
+    story: solution
+
+  - id: trust
+    lane: browsers
+    name: Whose key is this?
+    what: Checks that the key which signed a message really is Alice's, without taking the server's word for it.
+    detail: >-
+      Every change of key is signed by the key before it, back to the first. The browser checks
+      that history, checks the transparency log vouches for it, and remembers the keys of
+      contacts Bob has verified in person.
+    code: [frontend/src/lib/crypto/keyHistory.js, frontend/src/lib/log.js, frontend/src/lib/keys.js]
+    handbook: ghostchat/03-identity
+    story: decision-pre-rotation-for-key-changes
+
+  - id: relay
+    lane: server
+    name: Relay
+    what: Takes signed envelopes over a WebSocket and delivers them to whoever is in the conversation.
+    detail: >-
+      Socket.IO, with Redis between instances so a message sent to one instance reaches a
+      recipient connected to another. It sees who talks to whom and when. It never sees what
+      was said.
+    code: [backend/src/realtime.js, backend/src/auth.js]
+    handbook: ghostchat/02-messages
+
+  - id: chain
+    lane: server
+    name: Chain keeper
+    what: Accepts a message only if it is properly signed and links onto the newest message in its conversation.
+    detail: >-
+      When two people send at the same moment only one can be next. The other is answered with
+      a conflict and the message it missed, and its browser links onto that, signs again and
+      resends without the person doing anything.
+    code: [backend/src/services/chain.js]
+    handbook: ghostchat/02-messages
+    story: decision-deletion-that-keeps-the-chain-intact
+
+  - id: log
+    lane: server
+    name: Key log
+    what: A public, append-only log of everyone's public keys, the same design as Certificate Transparency.
+    detail: >-
+      The server signs the head of the log and anchors it in Bitcoin. If it showed two people
+      different keys for the same person, the proofs they each hold would not fit together.
+    code: [backend/src/services/log.js, backend/src/services/merkle.js, backend/src/services/anchoring.js]
+    handbook: ghostchat/03-identity
+    story: decision-a-transparency-log-not-a-blockchain
+
+  - id: messages
+    lane: database
+    name: Stored messages
+    what: Locked text, sealed keys, signatures and links. Nothing here opens without a private key from a browser.
+    detail: >-
+      Files are stored the same way, encrypted in the browser and named by the hash of their
+      encrypted bytes. A deleted message leaves its place in the chain and loses its content.
+    code: [backend/src/models/message.js, backend/src/services/files.js]
+    handbook: ghostchat/02-messages
+    story: decision-files-in-the-database-not-a-separate-store
+
+  - id: leaves
+    lane: database
+    name: Key records
+    what: Each account's signed history of keys, and the leaves of the log built from them.
+    detail: >-
+      Public keys only. The private halves stay inside each account's vault, which is stored
+      here too but was locked in the browser.
+    code: [backend/src/models/keyEntry.js, backend/src/models/logLeaf.js]
+    handbook: ghostchat/03-identity
+
+connections:
+  - { from: vault, to: seal, label: private keys }
+  - { from: seal, to: relay, label: signed envelope }
+  - { from: relay, to: chain, label: asks to append }
+  - { from: chain, to: messages, label: stores }
+  - { from: relay, to: open, label: delivers }
+  - { from: open, to: trust, label: "who signed this?" }
+  - { from: trust, to: log, label: asks for proof }
+  - { from: vault, to: log, label: publishes public keys }
+  - { from: log, to: leaves, label: reads and appends }
+
+flows:
+  - id: send
+    title: Alice sends Bob a message
+    summary: >-
+      One message, from her keyboard to his screen. At each step, notice what the server is
+      given: enough to check and deliver the message, never enough to read or fake it.
+    steps:
+      - from: vault
+        to: seal
+        title: Keys that never left
+        text: >-
+          Alice's private keys are already unlocked in her browser. They were made there, and
+          the server has only ever held a locked copy.
+      - from: seal
+        to: relay
+        title: Lock, link, sign, send
+        text: >-
+          Her browser encrypts the text with a fresh key, seals that key to Bob, adds the hash of
+          the message before it, signs the lot and sends the envelope.
+      - from: relay
+        to: chain
+        title: Is it next in line?
+        text: >-
+          The server checks the signature and that the envelope links onto the newest message.
+          If Bob sent at the same moment and got in first, Alice's browser is told, links onto
+          his message, signs again and resends.
+      - from: chain
+        to: messages
+        title: Stored, still locked
+        text: >-
+          The envelope is saved as it arrived. The server holds the locked text and the sealed
+          keys and can open neither.
+      - from: relay
+        to: open
+        title: Delivered
+        text: >-
+          The envelope goes to Bob's browser over his open connection, even if he is connected
+          to a different server instance.
+      - from: open
+        to: trust
+        title: Who signed this?
+        text: >-
+          Before decrypting, Bob's browser checks the signature and the link to the message
+          before, and asks whether the signing key is really Alice's.
+      - from: trust
+        to: log
+        title: Proof, not the server's word
+        text: >-
+          Alice's key history is checked link by link and against the public key log. Only then
+          is the message opened and shown, with a shield beside it.
+    proof: >-
+      Tests send two messages at the same moment and check one lands and the other is answered
+      with what it missed (backend/tests/realtime.test.js); browser tests tamper with a stored
+      message and check the conversation shows the break (e2e/tests/tampering.spec.js).

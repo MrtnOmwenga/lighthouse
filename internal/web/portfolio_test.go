@@ -249,7 +249,7 @@ func TestTheArchitecturePage(t *testing.T) {
 	if !strings.Contains(b.expect(200, "GET", "/sitemap.xml", nil), "/projects/redacted/architecture") {
 		t.Error("the sitemap leaves the diagram out")
 	}
-	b.expect(404, "GET", "/projects/ghostchat/architecture", nil)
+	b.expect(404, "GET", "/projects/pair-bridge/architecture", nil)
 	b.expect(404, "GET", "/projects/nothing/architecture", nil)
 
 	for i := range content.Projects {
