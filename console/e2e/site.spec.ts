@@ -174,7 +174,6 @@ test.describe('the architecture page', () => {
     const diagram = page.locator('#diagram');
     await expect(diagram.locator('.arch-wire')).toHaveCount(await page.locator('.arch-links li').count());
     const now = page.locator('#arch-now');
-    await expect(now).toContainText('Select any part of the diagram');
 
     await diagram.getByRole('button', { name: 'Collaboration server' }).click();
     await expect(now).toContainText('re-checks every connection when access changes');
@@ -216,13 +215,32 @@ test.describe('the architecture page', () => {
     await expect(next).toBeDisabled();
 
     // Play starts again from the top and moves on without being asked.
-    await now.getByRole('button', { name: 'Play again' }).click();
+    await now.getByRole('button', { name: 'Play' }).click();
     await expect(now).toContainText('Step 1 of 7');
     await expect(now.getByRole('button', { name: 'Pause' })).toBeVisible();
     await expect(now).toContainText('Step 2 of 7', { timeout: 10_000 });
     await now.getByRole('button', { name: 'Pause' }).click();
     await now.getByRole('button', { name: 'Show everything' }).click();
     await expect(page.locator('#diagram')).not.toHaveClass(/focus/);
+  });
+
+  test('plays by itself on arrival, round and round, until the reader takes over', async ({ page }) => {
+    await page.goto(address);
+    const now = page.locator('#arch-now');
+    await expect(now).toContainText('Step 1 of 7');
+    await expect(now.getByRole('button', { name: 'Pause' })).toBeVisible();
+    const top = await page.evaluate(() => scrollY);
+    await expect(now).toContainText('Step 3 of 7', { timeout: 15_000 });
+    expect(await page.evaluate(() => scrollY)).toBe(top); // playing never moves the reader
+    await expect(now).toContainText('Step 7 of 7', { timeout: 30_000 });
+    await expect(now).toContainText('Step 1 of 7', { timeout: 10_000 });
+
+    // Any choice of the reader's own stops it: a button, a step, or a part.
+    await now.getByRole('button', { name: 'Next' }).click();
+    await expect(now.getByRole('button', { name: 'Play' })).toBeVisible();
+    await expect(now).toContainText('Step 2 of 7');
+    await page.waitForTimeout(3500);
+    await expect(now).toContainText('Step 2 of 7');
   });
 
   test('an address names a part or a step, and the assistant points with the same addresses', async ({ page }) => {

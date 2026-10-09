@@ -20,9 +20,9 @@
   </div>
 </section>
 
-<section class="wrap section grid">
-  <div class="span-12">
-    <div class="fig arch" id="diagram" data-arch>
+<section class="wrap section stack-sm">
+  <div class="fig arch-stage">
+    <div class="arch" id="diagram" data-arch>
       <svg class="arch-wires" aria-hidden="true" focusable="false"></svg>
       {{range $a.Lanes}}
       <div class="arch-lane">
@@ -33,41 +33,29 @@
       </div>
       {{end}}
     </div>
-  </div>
-  <div class="span-7 stack-sm">
-    <div class="panel arch-now" id="arch-now" hidden>
-      <p class="label" data-now-kicker>Start here</p>
-      <div class="arch-now-body" data-now-body aria-live="polite">
-        <p>Select any part of the diagram to see what it does and where its code is{{with $a.Flows}}, or press Next to walk through what happens when {{(index . 0).Title | lowerFirst}}{{end}}.</p>
+    <div class="arch-now" id="arch-now" hidden>
+      <div class="arch-progress" aria-hidden="true"><span data-now-progress></span></div>
+      <div class="arch-caption">
+        <span class="arch-badge" data-now-badge aria-hidden="true" hidden></span>
+        <div class="arch-now-text">
+          <p class="label" data-now-kicker>Start here</p>
+          <div class="arch-now-body" data-now-body aria-live="polite">
+            <p>Select any part of the diagram to see what it does and where its code is{{with $a.Flows}}, or press Play to watch what happens when {{(index . 0).Title | lowerFirst}}{{end}}.</p>
+          </div>
+        </div>
       </div>
       {{if $a.Flows}}
       <div class="arch-controls">
+        <button type="button" class="button primary" data-play>Play</button>
         <button type="button" class="button" data-back disabled>Back</button>
-        <button type="button" class="button primary" data-next>Next</button>
-        <button type="button" class="button" data-play>Play</button>
+        <button type="button" class="button" data-next>Next</button>
+        <span class="arch-pips" data-pips></span>
         <button type="button" class="button" data-clear hidden>Show everything</button>
       </div>
       {{end}}
     </div>
-    <p class="caption arch-plain">The parts and how they connect are listed in full below.</p>
   </div>
-
-  <aside class="span-5 rail">
-    {{range $a.Flows}}{{$f := .}}
-    <section class="arch-flow" id="flow-{{.ID}}" data-flow="{{.ID}}">
-      <p class="label">Walk-through</p>
-      <h2>{{.Title}}</h2>
-      {{with .Summary}}<p class="arch-flow-summary">{{.}}</p>{{end}}
-      <ol class="arch-steps">
-        {{range $i, $s := .Steps}}<li id="flow-{{$f.ID}}-{{inc $i}}" data-from="{{$s.From}}" data-to="{{$s.To}}">
-          <a href="#flow-{{$f.ID}}-{{inc $i}}"><span class="t">{{$s.Title}}</span><span class="r">{{$a.Name $s.From}} → {{$a.Name $s.To}}</span></a>
-          <p>{{$s.Text}}</p>
-        </li>{{end}}
-      </ol>
-      {{with .Proof}}<p class="caption"><strong>How we know:</strong> {{.}}</p>{{end}}
-    </section>
-    {{end}}
-  </aside>
+  <p class="caption arch-plain">The parts, how they connect and the walk-through are listed in full below.</p>
 </section>
 
 <section class="wrap section">
@@ -82,6 +70,20 @@
     </article>
     {{end}}
   </div>
+  {{range $a.Flows}}{{$f := .}}
+  <section class="arch-flow" id="flow-{{.ID}}" data-flow="{{.ID}}">
+    <p class="label">Walk-through, step by step</p>
+    <h2 class="section-title">{{.Title}}</h2>
+    {{with .Summary}}<p class="arch-flow-summary">{{.}}</p>{{end}}
+    <ol class="arch-steps">
+      {{range $i, $s := .Steps}}<li id="flow-{{$f.ID}}-{{inc $i}}" data-from="{{$s.From}}" data-to="{{$s.To}}">
+        <a href="#flow-{{$f.ID}}-{{inc $i}}"><span class="t">{{$s.Title}}</span><span class="r">{{$a.Name $s.From}} → {{$a.Name $s.To}}</span></a>
+        <p>{{$s.Text}}</p>
+      </li>{{end}}
+    </ol>
+    {{with .Proof}}<p class="caption"><strong>How we know:</strong> {{.}}</p>{{end}}
+  </section>
+  {{end}}
   <h2 id="connections" class="section-title">How they connect</h2>
   <ul class="arch-links">
     {{range $a.Connections}}<li data-from="{{.From}}" data-to="{{.To}}"><span class="ends">{{$a.Name .From}} → {{$a.Name .To}}</span> <span class="l">{{.Label}}</span></li>{{end}}

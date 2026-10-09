@@ -40,6 +40,9 @@
   const next = now.querySelector('[data-next]');
   const play = now.querySelector('[data-play]');
   const clear = now.querySelector('[data-clear]');
+  const badge = now.querySelector('[data-now-badge]');
+  const progress = now.querySelector('[data-now-progress]');
+  const pips = now.querySelector('[data-pips]');
   const hint = [...body.childNodes].map((n) => n.cloneNode(true));
 
   // What is showing: nothing, one part, or one step of a walk-through.
@@ -47,8 +50,13 @@
   let flow = flows[0];
   let timer = 0;
   let wires = [];
-  const dot = shape('circle', { class: 'arch-dot', r: 6 });
+  // The marker that travels a wire carries the step's number, the same one the caption shows.
+  const dot = shape('g', { class: 'arch-dot' });
+  const dotNumber = shape('text', { y: 4.5 });
+  dot.append(shape('circle', { r: 11 }), dotNumber);
   let travelling = 0;
+  const SHORT = 18;
+  const pace = () => (still.matches ? 5000 : 2600); // milliseconds a step is shown for while playing
 
   // ---- Drawing -------------------------------------------------------------------------------
 
@@ -98,6 +106,24 @@
       });
     }
 
+    // Wires between two rows run down, across and down again. Each gets its own height for the
+    // part that runs across, so two wires in the same gap never lie on top of one another.
+    const gaps = new Map();
+    for (const wire of plan) {
+      if (wire.route !== 'down' || Math.abs(wire.p.x - wire.q.x) < 1) continue;
+      const key = `${Math.round(Math.min(wire.p.y, wire.q.y))} ${Math.round(Math.max(wire.p.y, wire.q.y))}`;
+      if (!gaps.has(key)) gaps.set(key, []);
+      gaps.get(key).push(wire);
+    }
+    for (const list of gaps.values()) {
+      const upper = (w) => (w.p.y < w.q.y ? w.p : w.q);
+      list.sort((x, y) => upper(x).x - upper(y).x);
+      list.forEach((wire, i) => {
+        const [top, bottom] = [Math.min(wire.p.y, wire.q.y) + 12, Math.max(wire.p.y, wire.q.y) - 14];
+        wire.track = top + ((bottom - top) * (i + 1)) / (list.length + 1);
+      });
+    }
+
     const { width, height } = root.getBoundingClientRect();
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const defs = shape('defs');
@@ -108,7 +134,7 @@
     }
     svg.replaceChildren(defs);
     const placed = [];
-    wires = plan.map(({ link, a, b, route, p, q }) => {
+    wires = plan.map(({ link, a, b, route, p, q, track }) => {
       let d;
       let at;
       if (route === 'across') {
@@ -118,13 +144,15 @@
         // The gap between neighbours is narrower than most labels, so the label sits under it.
         at = { x: (x1 + x2) / 2, y: Math.max(a.b, b.b) + 16 };
       } else if (route === 'over') {
-        const lift = Math.min(p.y, q.y) - 26;
-        d = `M${p.x} ${p.y}C${p.x} ${lift} ${q.x} ${lift} ${q.x} ${q.y}`;
-        at = { x: (p.x + q.x) / 2, y: lift + 2 };
+        const lift = Math.min(p.y, q.y) - 20;
+        d = `M${p.x} ${p.y}V${lift}H${q.x}V${q.y}`;
+        at = { x: (p.x + q.x) / 2, y: lift - 6 };
+      } else if (track === undefined) {
+        d = `M${p.x} ${p.y}V${q.y}`;
+        at = { x: p.x, y: (p.y + q.y) / 2 + 4 };
       } else {
-        const mid = (p.y + q.y) / 2;
-        d = `M${p.x} ${p.y}C${p.x} ${mid} ${q.x} ${mid} ${q.x} ${q.y}`;
-        at = { x: (p.x + q.x) / 2, y: mid + 4 };
+        d = `M${p.x} ${p.y}V${track}H${q.x}V${q.y}`;
+        at = { x: (p.x + q.x) / 2, y: track - 6 };
       }
       const g = shape('g', { class: 'arch-wire' });
       const path = shape('path', { d, 'marker-end': 'url(#arch-arrow-idle)' });
@@ -151,16 +179,24 @@
 
   function travel(wire, reversed) {
     cancelAnimationFrame(travelling);
-    if (!wire || still.matches) return dot.setAttribute('visibility', 'hidden');
+    if (!wire) return dot.setAttribute('visibility', 'hidden');
     const length = wire.path.getTotalLength();
+    dotNumber.textContent = String(state.index + 1);
+    if (still.matches) {
+      // No travelling: the marker simply sits where the step arrives.
+      const end = wire.path.getPointAtLength(reversed ? SHORT : Math.max(0, length - SHORT));
+      dot.setAttribute('transform', `translate(${end.x} ${end.y})`);
+      return dot.setAttribute('visibility', 'visible');
+    }
     const started = performance.now();
     dot.setAttribute('visibility', 'visible');
     const frame = (t) => {
-      const done = Math.min(1, (t - started) / 900);
+      const done = Math.min(1, (t - started) / 700);
       const eased = done < 0.5 ? 2 * done * done : 1 - (-2 * done + 2) ** 2 / 2;
-      const point = wire.path.getPointAtLength(length * (reversed ? 1 - eased : eased));
-      dot.setAttribute('cx', point.x);
-      dot.setAttribute('cy', point.y);
+      // It stops just short of the part it is going to, so the part doesn't hide it.
+      const along = eased * Math.max(0, length - SHORT);
+      const point = wire.path.getPointAtLength(reversed ? length - along : along);
+      dot.setAttribute('transform', `translate(${point.x} ${point.y})`);
       if (done < 1) travelling = requestAnimationFrame(frame);
     };
     travelling = requestAnimationFrame(frame);
@@ -224,14 +260,26 @@
       kicker.textContent = 'Start here';
       body.replaceChildren(...hint.map((n) => n.cloneNode(true)));
     }
-    if (!next) return;
     const index = state.kind === 'step' ? state.index : -1;
+    badge.hidden = index < 0;
+    badge.textContent = String(index + 1);
+    // While it plays by itself the caption isn't read out: a screen reader would never keep up.
+    body.setAttribute('aria-live', timer ? 'off' : 'polite');
+    if (!next) return;
+    [...pips.children].forEach((pip, i) => {
+      pip.classList.toggle('current', i === index);
+      if (i === index) pip.setAttribute('aria-current', 'step'); else pip.removeAttribute('aria-current');
+    });
+    for (const a of progress.getAnimations()) a.cancel();
+    if (timer && index >= 0) progress.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: pace(), easing: 'linear', fill: 'forwards' });
     back.disabled = index <= 0;
     next.disabled = index >= flow.steps.length - 1;
-    play.textContent = timer ? 'Pause' : index >= flow.steps.length - 1 ? 'Play again' : 'Play';
+    play.textContent = timer ? 'Pause' : 'Play';
     clear.hidden = state.kind === 'none';
   }
 
+  // `keep` is a step taken by the page itself while playing: it doesn't stop the playing, and
+  // doesn't move the reader, who may be reading something else by now.
   function show(to, { keep = false } = {}) {
     if (!keep) stop();
     state = to;
@@ -240,7 +288,7 @@
     // The diagram and the words about it are read together, so both are kept on screen.
     const top = root.getBoundingClientRect().top;
     const bottom = now.getBoundingClientRect().bottom;
-    if (to.kind !== 'none' && (top < 0 || bottom > innerHeight)) root.scrollIntoView({ block: 'start', behavior: still.matches ? 'auto' : 'smooth' });
+    if (!keep && to.kind !== 'none' && (top < 0 || bottom > innerHeight)) root.scrollIntoView({ block: 'start', behavior: still.matches ? 'auto' : 'smooth' });
   }
 
   function stop() {
@@ -253,16 +301,12 @@
     show({ kind: 'step', index }, options);
   }
 
-  function start() {
-    const index = state.kind === 'step' && state.index < flow.steps.length - 1 ? state.index + 1 : 0;
-    stepTo(index);
-    timer = setInterval(() => {
-      if (state.kind !== 'step' || state.index >= flow.steps.length - 1) {
-        stop();
-        return describe();
-      }
-      stepTo(state.index + 1, { keep: true });
-    }, still.matches ? 6000 : 4500);
+  // Playing goes round: after the last step it starts again, until something else is chosen.
+  // Started by the page on arrival (`unasked`), it leaves the reader where they are.
+  function start(unasked = false) {
+    const onward = () => (state.kind === 'step' && state.index < flow.steps.length - 1 ? state.index + 1 : 0);
+    stepTo(onward(), { keep: unasked });
+    timer = setInterval(() => stepTo(onward(), { keep: true }), pace());
     describe();
   }
 
@@ -298,6 +342,14 @@
       stepTo(i);
     }));
   }
+  if (pips && flow) {
+    flow.steps.forEach((step, i) => {
+      const pip = el('button', { type: 'button', className: 'arch-pip', textContent: String(i + 1) });
+      pip.setAttribute('aria-label', `Step ${i + 1}: ${step.title}`);
+      pip.addEventListener('click', () => stepTo(i));
+      pips.append(pip);
+    });
+  }
   back?.addEventListener('click', () => stepTo(state.index - 1));
   next?.addEventListener('click', () => stepTo(state.kind === 'step' ? state.index + 1 : 0));
   play?.addEventListener('click', () => {
@@ -316,5 +368,8 @@
   describe();
   new ResizeObserver(() => draw()).observe(root);
   document.fonts?.ready.then(draw);
-  if (location.hash) follow(location.hash.slice(1));
+  // The walk-through plays by itself on arrival, unless the address asked for something in
+  // particular or the reader has asked for less motion.
+  if (location.hash && follow(location.hash.slice(1))) return;
+  if (flow && !still.matches) start(true);
 })();
