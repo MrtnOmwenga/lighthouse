@@ -44,8 +44,9 @@ func TestTheShippedSiteIsValid(t *testing.T) {
 	if r, _ := s.Find("redacted"); r.Demo != "https://redacted.example.dev" || r.Tour != "https://redacted.example.dev/?tour=play" {
 		t.Errorf("${DOMAIN} is the public URL's host: %q %q", r.Demo, r.Tour)
 	}
-	if s.Profile.Links.CVURL() != "" {
-		t.Error("no CV configured: the button stays hidden")
+	// The CV is linked from where it is kept, outside the repository (deploy/README.md).
+	if cv := s.Profile.Links.CVURL(); !strings.HasPrefix(cv, "https://") || !strings.HasSuffix(cv, ".pdf") {
+		t.Errorf("the CV link should be an https address of a PDF: %q", cv)
 	}
 }
 
