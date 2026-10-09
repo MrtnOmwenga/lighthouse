@@ -68,7 +68,7 @@ test("a public page is served from its copy for a minute, then fetched again", a
   assert.equal(first.headers.get("X-Edge-Cache"), "miss");
   const second = await ask("https://site.example/projects/lighthouse");
   assert.equal(second.headers.get("X-Edge-Cache"), "hit");
-  assert.equal(second.headers.get("Cache-Control"), "public, max-age=30"); // the origin's, not the edge's
+  assert.equal(second.headers.get("Cache-Control"), "public, max-age=30, no-transform"); // the origin's, not the edge's
   assert.equal(second.headers.get("X-Edge-Saved-At"), null);
   assert.match(await second.text(), /v1/);
   assert.equal(calls.length, 1);
@@ -89,7 +89,7 @@ test("when the origin fails, the last copy is served and says so", async () => {
     const res = await ask("https://site.example/status");
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("X-Edge-Cache"), "stale");
-    assert.equal(res.headers.get("Cache-Control"), "no-store");
+    assert.equal(res.headers.get("Cache-Control"), "no-store, no-transform");
     const body = await res.text();
     assert.match(body, /<body>\n<p class="edge-stale" role="status">The site isn't responding right now\. This is a copy saved at 2023-11-14 22:13 UTC/);
     assert.match(body, /v1/);
@@ -128,3 +128,19 @@ test("static files are kept for an hour, or a year when fingerprinted", async ()
 });
 
 test.after(() => { Date.now = realNow; });
+
+test("pages leave marked no-transform, so nothing rewrites them on the way out; other answers are untouched", async () => {
+  const page = await ask("https://site.example/about");
+  assert.equal(page.headers.get("Cache-Control"), "public, max-age=30, no-transform");
+  assert.equal((await ask("https://site.example/about")).headers.get("Cache-Control"), "public, max-age=30, no-transform"); // from the copy too
+
+  origin = () => new Response("<html></html>", { status: 200, headers: { "Content-Type": "text/html" } });
+  assert.equal((await ask("https://demo.site.example/")).headers.get("Cache-Control"), "no-transform");
+  origin = () => new Response("<html></html>", { status: 200, headers: { "Content-Type": "text/html", "Cache-Control": "no-store, no-transform" } });
+  assert.equal((await ask("https://demo.site.example/")).headers.get("Cache-Control"), "no-store, no-transform");
+
+  const json = new Response("{}", { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  origin = () => json;
+  const answer = await ask("https://demo.site.example/api/x");
+  assert.equal(answer, json); // the very same response object: a WebSocket upgrade must pass through whole
+});

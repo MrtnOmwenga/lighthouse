@@ -45,7 +45,7 @@ export default {
       ...extra,
     });
 
-    if (isPublicPage(request, url, env)) return page(url, toOrigin, ctx);
+    if (isPublicPage(request, url, env)) return asSent(await page(url, toOrigin, ctx));
 
     // Static files are cached at the edge, so repeat downloads never reach Google (whose free
     // tier includes only 1 GB a month of outbound data): for a year when the address carries a
@@ -55,7 +55,7 @@ export default {
       const ttl = url.searchParams.has("v") || url.pathname.includes("/fonts/") ? YEAR : HOUR;
       return toOrigin({ cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": ttl, "400-599": 0 } } });
     }
-    return toOrigin();
+    return asSent(await toOrigin());
   },
 
   // The scheduled calls. One failing doesn't stop the others; a failure is logged and the next
@@ -75,6 +75,19 @@ export default {
     await Promise.all(calls);
   },
 };
+
+// Pages leave the edge as the origin wrote them. Cloudflare otherwise edits HTML on its way out
+// (it was inserting its own analytics script into every page), and "no-transform" is the standard
+// way to refuse that. The sites promise visitors what is collected and by whom, and GhostChat
+// publishes a hash of every file it serves; neither holds if a third party rewrites the page.
+function asSent(response) {
+  if (!(response.headers.get("Content-Type") ?? "").includes("text/html")) return response; // WebSocket upgrades included
+  const cacheControl = response.headers.get("Cache-Control") ?? "";
+  if (/\bno-transform\b/.test(cacheControl)) return response;
+  const out = new Response(response.body, response);
+  out.headers.set("Cache-Control", cacheControl ? `${cacheControl}, no-transform` : "no-transform");
+  return out;
+}
 
 // A public page asked for anonymously: no session cookie, so nothing in the answer is anyone's.
 function isPublicPage(request, url, env) {
