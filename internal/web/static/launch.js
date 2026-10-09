@@ -18,7 +18,10 @@
   const detail = $('[data-detail]');
   const clock = $('[data-clock]');
   const skip = $('[data-skip]');
-  const waiting = $('[data-waiting]');
+  // The last part has a version for each state of the demo; one is shown at a time.
+  const versions = [...root.querySelectorAll('[data-when]')];
+  const say = (when) => versions.forEach((v) => { v.hidden = v.dataset.when !== when; });
+  say('waiting');
   const parts = $('[data-parts]');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PART_MS = 6500;
@@ -66,7 +69,6 @@
     partStarted = Date.now();
     if (index === last) {
       introDone = true;
-      skip.hidden = true;
       maybeOpen();
     }
   }
@@ -100,10 +102,12 @@
     band.hidden = false;
     tag.textContent = `UPDATE ${elapsed(readyAt)}`;
     state.textContent = `${name} is ready.`;
-    detail.textContent = introDone ? '' : 'Keep reading, or open it from the bar above.';
-    if (waiting) waiting.hidden = true;
-    skip.hidden = introDone;
-    skip.textContent = tour ? 'Skip intro' : `Skip intro and open`;
+    detail.textContent = 'Open it whenever you like; the introduction will wait.';
+    root.classList.remove('slow');
+    say('ready');
+    skip.disabled = false;
+    skip.classList.add('primary');
+    skip.textContent = `Open ${name} →`;
     maybeOpen();
   }
 
@@ -112,11 +116,10 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
+  // The button beside the status: it waits with the demo, then goes straight in.
   skip.addEventListener('click', () => {
-    takeControl();
-    if (!ready) track('intro_skip');
-    if (ready && !tour) open(demo);
-    else show(last);
+    if (!introDone) track('intro_skip');
+    open(demo);
   });
   document.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLElement && e.target.closest('input, textarea')) return;
@@ -136,7 +139,7 @@
     requestAnimationFrame(frame);
   }
 
-  // Poll until the demo answers: quickly at first, then more patiently. After three minutes say
+  // Poll until the demo answers: quickly at first, then more patiently. After a minute say
   // so, and let the visitor try it anyway.
   let warned = false;
   async function poll() {
@@ -145,15 +148,15 @@
       if (res.ok && (await res.json()).ready) return markReady();
     } catch { /* offline for a moment: keep trying */ }
     const waited = Date.now() - started;
-    if (waited > 180_000 && !warned) {
+    if (waited > 60_000 && !warned) {
       warned = true;
       root.classList.add('slow');
       tag.textContent = 'DELAYED';
       state.textContent = `${name} is taking longer than usual`;
       detail.textContent = 'You can keep waiting, or try opening it anyway.';
-      skip.hidden = false;
+      say('slow');
+      skip.disabled = false;
       skip.textContent = 'Open anyway';
-      skip.onclick = () => open(demo);
     }
     setTimeout(poll, waited < 60_000 ? 1500 : 5000);
   }

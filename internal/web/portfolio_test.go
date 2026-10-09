@@ -200,3 +200,69 @@ func TestTheShippedSiteRenders(t *testing.T) {
 		}
 	}
 }
+
+// A project's architecture page: the diagram's parts and walk-through are in the page itself, so
+// it reads without its script. The story and the launch page carry the same diagram. A draft
+// answers but isn't linked, shown elsewhere, listed or indexed.
+func TestTheArchitecturePage(t *testing.T) {
+	t.Parallel()
+	content, err := site.Load("../../deploy/site", "example.dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range content.Projects {
+		content.Projects[i].ArchitectureDraft = content.Projects[i].Slug != "redacted"
+	}
+	e := start(t, nil, content)
+	b := e.browser()
+	resp, page := b.do("GET", "/projects/redacted/architecture", nil)
+	if resp.StatusCode != 200 || resp.Header.Get("X-Robots-Tag") != "" {
+		t.Fatalf("a published diagram: %d, robots %q", resp.StatusCode, resp.Header.Get("X-Robots-Tag"))
+	}
+	for _, want := range []string{
+		`id="part-realtime"`, `href="#about-realtime"`, `id="about-realtime"`, `id="flow-demote-3"`, `data-from="api" data-to="realtime"`,
+		`href="https://github.com/MrtnOmwenga/RBAC-API/blob/HEAD/src/policy/policy.ts"`, `/static/arch.js?v=`, "REST API → Collaboration server",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+	if inlineStyle.MatchString(page) || strings.Contains(page, "noindex") {
+		t.Error("the page has an inline style, or hides from search engines though it is published")
+	}
+	if !strings.Contains(page, `href="/projects/redacted#decision-fail-closed-on-permission-changes"`) {
+		t.Error("a part doesn't lead into the story")
+	}
+	story := b.expect(200, "GET", "/projects/redacted", nil)
+	for _, want := range []string{`href="/projects/redacted/architecture"`, `id="decision-fail-closed-on-permission-changes"`, `data-arch`, `href="/projects/redacted/architecture#about-api"`, `/static/arch.js?v=`} {
+		if !strings.Contains(story, want) {
+			t.Errorf("the story is missing %q", want)
+		}
+	}
+	launch := b.expect(200, "GET", "/go/redacted", nil)
+	if !strings.Contains(launch, `data-arch`) || !strings.Contains(launch, "How it works") || inlineStyle.MatchString(launch) || inlineStyle.MatchString(story) {
+		t.Error("the launch page doesn't carry the diagram, or a page uses an inline style")
+	}
+	if strings.Contains(b.expect(200, "GET", "/go/ghostchat", nil), "data-arch") {
+		t.Error("a project without a diagram shows one on its launch page")
+	}
+	if !strings.Contains(b.expect(200, "GET", "/sitemap.xml", nil), "/projects/redacted/architecture") {
+		t.Error("the sitemap leaves the diagram out")
+	}
+	b.expect(404, "GET", "/projects/ghostchat/architecture", nil)
+	b.expect(404, "GET", "/projects/nothing/architecture", nil)
+
+	for i := range content.Projects {
+		content.Projects[i].ArchitectureDraft = true
+	}
+	resp, page = b.do("GET", "/projects/redacted/architecture", nil)
+	if resp.StatusCode != 200 || resp.Header.Get("X-Robots-Tag") != "noindex" || !strings.Contains(page, `<meta name="robots" content="noindex">`) {
+		t.Errorf("a draft answers, and asks not to be indexed: %d %q", resp.StatusCode, resp.Header.Get("X-Robots-Tag"))
+	}
+	if strings.Contains(b.expect(200, "GET", "/projects/redacted", nil), "/architecture") || strings.Contains(b.expect(200, "GET", "/sitemap.xml", nil), "/architecture") {
+		t.Error("a draft is linked from the story or listed in the sitemap")
+	}
+	if strings.Contains(b.expect(200, "GET", "/go/redacted", nil), "data-arch") {
+		t.Error("a draft is shown on the launch page")
+	}
+}

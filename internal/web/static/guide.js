@@ -56,7 +56,7 @@
 
   // Taking the reader to a heading on one of this site's pages, and marking it for a moment so the
   // eye lands on it. The address is always one of this site's own: a path and an anchor.
-  const PLACE = /^\/(?:projects\/[a-z0-9-]+|about)#[a-z0-9-]+$/;
+  const PLACE = /^\/(?:projects\/[a-z0-9-]+(?:\/architecture)?|about)#[a-z0-9-]+$/;
   const POINT = 'lh_guide_point';
   const point = (id) => {
     const target = document.getElementById(id);
@@ -66,20 +66,25 @@
     // On a narrow screen the window would cover what is being pointed at: it steps aside.
     if (innerWidth <= 560 && !panel.hidden) open(false);
     target.classList.add('guide-point');
+    // A page that can do more than be scrolled to (an architecture diagram) listens for this.
+    target.dispatchEvent(new CustomEvent('guide:point', { bubbles: true }));
     setTimeout(() => target.classList.remove('guide-point'), 6000);
+  };
+  // Going to a place: on this page it is pointed at; on another, the page is opened and points at
+  // it on arrival, with this window still open and the conversation in it.
+  const go = (route) => {
+    const [path, id] = route.split('#');
+    if (path === location.pathname) {
+      history.replaceState(history.state, '', route);
+      point(id);
+      return true;
+    }
+    try { sessionStorage.setItem(POINT, id); } catch { /* arrives at the top of the page instead */ }
+    return false;
   };
   const place = (route, label) => {
     const link = el('a', { href: route, className: 'guide-place', textContent: label });
-    link.addEventListener('click', (e) => {
-      const [path, id] = route.split('#');
-      if (path === location.pathname) {
-        e.preventDefault();
-        history.replaceState(history.state, '', route);
-        point(id);
-      } else {
-        try { sessionStorage.setItem(POINT, id); } catch { /* arrives at the top of the page instead */ }
-      }
-    });
+    link.addEventListener('click', (e) => { if (go(route)) e.preventDefault(); });
     return link;
   };
   try {
@@ -160,6 +165,10 @@
     talk.turns.push(turn);
     show(turn);
     keep();
+    // An answer takes the reader to where it comes from: the first of its sources that is a place
+    // on this site. Not on a narrow screen, where this window would have to close to show it.
+    const lead = turn.kind === 'answer' && innerWidth > 560 && turn.sources.find((s) => typeof s.route === 'string' && PLACE.test(s.route));
+    if (lead && !go(lead.route)) location.assign(lead.route);
     busy = false;
     send.disabled = false;
     input.focus();

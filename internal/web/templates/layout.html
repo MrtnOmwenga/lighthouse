@@ -75,3 +75,53 @@
 {{else if .Health}}<span class="status unknown">● Checking</span>
 {{else if not .Demo}}<span class="status local">{{with .NoDemoNote}}{{.}}{{end}}</span>{{end}}
 {{end}}
+
+{{define "arch-stage"}}{{$a := .Arch}}{{$slug := .Slug}}{{$base := .Base}}
+<div class="fig arch-stage">
+  <div class="arch" id="diagram" data-arch>
+    <svg class="arch-wires" aria-hidden="true" focusable="false"></svg>
+    {{range $a.Lanes}}
+    <div class="arch-lane">
+      <span class="label">{{.Label}}</span>
+      <div class="arch-parts">
+        {{range $a.In .ID}}<a class="arch-part" id="part-{{.ID}}" href="{{$base}}#about-{{.ID}}" data-part="{{.ID}}">{{.Name}}</a>{{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  <div class="arch-now" id="arch-now" hidden>
+    <div class="arch-progress" aria-hidden="true"><span data-now-progress></span></div>
+    <div class="arch-caption">
+      <span class="arch-badge" data-now-badge aria-hidden="true" hidden></span>
+      <div class="arch-now-text">
+        <p class="label" data-now-kicker>Start here</p>
+        <div class="arch-now-body" data-now-body aria-live="polite">
+          <p>Select any part of the diagram to see what it does and where its code is{{with $a.Flows}}, or press Play to watch what happens when {{(index . 0).Title | lowerFirst}}{{end}}.</p>
+        </div>
+      </div>
+    </div>
+    {{if $a.Flows}}
+    <div class="arch-controls">
+      <button type="button" class="button primary" data-play>Play</button>
+      <button type="button" class="button" data-back disabled>Back</button>
+      <button type="button" class="button" data-next>Next</button>
+      <span class="arch-pips" data-pips></span>
+      <button type="button" class="button" data-clear hidden>Show everything</button>
+    </div>
+    {{end}}
+  </div>
+  {{/* What the script draws from. Hidden: the architecture page lists the same things in the open. */}}
+  <div class="arch-data" hidden>
+    <ul>{{range $a.Connections}}<li data-link data-from="{{.From}}" data-to="{{.To}}">{{.Label}}</li>{{end}}</ul>
+    {{range $a.Parts}}
+    <div data-about="{{.ID}}">
+      <h3>{{.Name}}</h3>
+      <p class="what">{{.What}}</p>
+      <p>{{.Detail}}</p>
+      <p class="arch-code">{{if .Code}}<span class="label">Code</span> {{range .Code}}<a href="{{$a.CodeLink .}}" rel="noopener">{{.}}</a> {{end}}{{end}}{{if and .Story $.HasStory}}<a class="more" href="/projects/{{$slug}}#{{.Story}}">More about this in the story →</a>{{end}}</p>
+    </div>
+    {{end}}
+    {{range $a.Flows}}<ol data-flow="{{.ID}}" data-title="{{.Title}}">{{range .Steps}}<li data-from="{{.From}}" data-to="{{.To}}" data-title="{{.Title}}">{{.Text}}</li>{{end}}</ol>{{end}}
+  </div>
+</div>
+{{end}}

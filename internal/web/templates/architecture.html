@@ -1,0 +1,57 @@
+{{$p := .Card}}{{$a := .Architecture}}{{template "head" (printf "%s: how it is put together · The Lighthouse" $p.Name)}}
+<meta name="description" content="{{$a.Summary}}">
+{{if .Draft}}<meta name="robots" content="noindex">{{end}}
+{{template "social" (social $ (printf "/projects/%s/architecture" $p.Slug) (printf "%s: %s" $p.Name $a.Title) $a.Summary)}}
+<script src="{{asset "arch.js"}}" defer></script>
+</head>
+<body>
+{{template "masthead" .}}
+<main id="main">
+<section class="wrap">
+  <div class="story-head">
+    <span class="kicker"><a href="/projects">Projects</a> / <a href="/projects/{{$p.Slug}}">{{$p.Name}}</a> / Architecture</span>
+    <h1>{{$a.Title}}</h1>
+    <p class="standfirst">{{$a.Summary}}</p>
+    <div class="actions center">
+      {{if $p.HasStory}}<a class="button" href="/projects/{{$p.Slug}}">Read the story</a>{{end}}
+      {{if $p.Demo}}<a class="button primary" href="/go/{{$p.Slug}}">Launch the demo →</a>{{end}}
+      <a class="button" href="{{$a.Repository}}" rel="noopener">Code</a>
+    </div>
+  </div>
+</section>
+
+<section class="wrap section stack-sm">
+  {{template "arch-stage" (stage $p $a false)}}
+  <p class="caption arch-plain">The parts and the walk-through are listed in full below.</p>
+</section>
+
+<section class="wrap section">
+  <h2 id="parts" class="section-title">Every part</h2>
+  <div class="arch-list">
+    {{range $a.Parts}}
+    <article id="about-{{.ID}}" class="arch-about">
+      <h3>{{.Name}}</h3>
+      <p class="what">{{.What}}</p>
+      <p>{{.Detail}}</p>
+      {{if .Code}}<p class="arch-code"><span class="label">Code</span> {{range .Code}}<a href="{{$a.CodeLink .}}" rel="noopener">{{.}}</a> {{end}}</p>{{end}}
+      {{if and .Story $p.HasStory}}<p class="arch-code"><a class="more" href="/projects/{{$p.Slug}}#{{.Story}}">More about this in the story →</a></p>{{end}}
+    </article>
+    {{end}}
+  </div>
+  {{range $a.Flows}}{{$f := .}}
+  <section class="arch-flow" id="flow-{{.ID}}" data-flow="{{.ID}}">
+    <p class="label">Walk-through, step by step</p>
+    <h2 class="section-title">{{.Title}}</h2>
+    {{with .Summary}}<p class="arch-flow-summary">{{.}}</p>{{end}}
+    <ol class="arch-steps">
+      {{range $i, $s := .Steps}}<li id="flow-{{$f.ID}}-{{inc $i}}" data-from="{{$s.From}}" data-to="{{$s.To}}">
+        <a href="#flow-{{$f.ID}}-{{inc $i}}"><span class="t">{{$s.Title}}</span><span class="r">{{$a.Name $s.From}} → {{$a.Name $s.To}}</span></a>
+        <p>{{$s.Text}}</p>
+      </li>{{end}}
+    </ol>
+    {{with .Proof}}<p class="caption"><strong>How we know:</strong> {{.}}</p>{{end}}
+  </section>
+  {{end}}
+</section>
+</main>
+{{template "foot" .}}

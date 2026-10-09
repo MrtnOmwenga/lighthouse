@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.frontPage)
 	mux.HandleFunc("GET /projects", s.projectsPage)
 	mux.HandleFunc("GET /projects/{slug}", s.storyPage)
+	mux.HandleFunc("GET /projects/{slug}/architecture", s.architecturePage)
 	mux.HandleFunc("GET /about", s.aboutPage)
 	mux.HandleFunc("GET /privacy", s.privacyPage)
 	mux.HandleFunc("GET /media/{name}", s.media)

@@ -27,7 +27,9 @@ type Site struct {
 	Profile  Profile           `yaml:"profile"`
 	Projects []Project         `yaml:"projects"`
 	Stories  map[string]*Story `yaml:"-"` // by project slug
-	Dir      string            `yaml:"-"`
+	// Architectures are the projects' system diagrams, by project slug.
+	Architectures map[string]*Architecture `yaml:"-"`
+	Dir           string                   `yaml:"-"`
 }
 
 // Fact is a label and a value: a line of a fact box, a statistic, a skill area.
@@ -113,6 +115,9 @@ type Project struct {
 	Facts      []Fact    `yaml:"facts"`
 	Repo       string    `yaml:"repo"`
 	Docs       string    `yaml:"docs"` // design notes
+	// ArchitectureDraft keeps the project's architecture page out of the story, the sitemap and
+	// search engines until it has been read through. The page itself still answers.
+	ArchitectureDraft bool `yaml:"architecture_draft"`
 	// Demo is where the live demo is; empty for projects without one.
 	Demo string `yaml:"demo"`
 	// Health is polled until it answers, which also wakes a demo that sleeps when idle. Usually
@@ -207,7 +212,7 @@ func (s *Site) Next(slug string) (Project, bool) {
 // Load reads a site folder. An empty dir is an empty site. In site.yaml, ${DOMAIN} stands for
 // domain (the host of the site's public URL), so demo addresses are configured in one place.
 func Load(dir, domain string) (*Site, error) {
-	s := &Site{Stories: map[string]*Story{}, Dir: dir}
+	s := &Site{Stories: map[string]*Story{}, Architectures: map[string]*Architecture{}, Dir: dir}
 	if dir == "" {
 		return s, nil
 	}
@@ -229,6 +234,31 @@ func Load(dir, domain string) (*Site, error) {
 			continue
 		}
 		s.Stories[p.Slug] = st
+	}
+	for _, p := range s.Projects {
+		if !slugPattern.MatchString(p.Slug) {
+			continue
+		}
+		path := filepath.Join(dir, "architecture", p.Slug+".yaml")
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			continue // a project may have no diagram yet
+		}
+		a := &Architecture{}
+		if err := decode(path, a, domain); err != nil {
+			problems = append(problems, err.Error())
+			continue
+		}
+		problems = append(problems, a.validate("architecture/"+p.Slug+".yaml")...)
+		// A part may point into the story; the heading it names has to be there.
+		for _, part := range a.Parts {
+			if part.Story == "" {
+				continue
+			}
+			if st := s.Stories[p.Slug]; st == nil || !st.Anchors()[part.Story] {
+				problems = append(problems, fmt.Sprintf("architecture/%s.yaml: part %s: the story has no heading %q", p.Slug, part.ID, part.Story))
+			}
+		}
+		s.Architectures[p.Slug] = a
 	}
 	problems = append(problems, s.validate()...)
 	if len(problems) > 0 {

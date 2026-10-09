@@ -1,5 +1,6 @@
 {{with .Card}}{{template "head" (printf "Starting %s · The Lighthouse" .Name)}}{{end}}
 <script src="{{asset "launch.js"}}" defer></script>
+{{if .Architecture}}<script src="{{asset "arch.js"}}" defer></script>{{end}}
 </head>
 <body>
 {{with .Card}}
@@ -12,15 +13,17 @@
 {{template "masthead" .}}
 {{with .Card}}
 <main id="main" class="launch" data-launch data-slug="{{.Slug}}" data-demo="{{.Demo}}" data-name="{{.Name}}" {{with .Tour}}data-tour="{{.}}"{{end}}>
-  <div class="launch-inner">
+  <div class="launch-inner{{if $.Architecture}} launch-two{{end}}">
     <div class="developing" aria-live="polite">
       <span class="tag"><span class="pulse" aria-hidden="true"></span><span data-tag>DEVELOPING</span></span>
       <span class="what" data-state>Starting {{.Name}}</span>
       <span class="detail" data-detail>Checking that the demo is up; this usually takes a few seconds. Meanwhile, the story so far.</span>
       <span class="clock" data-clock aria-hidden="true"></span>
-      <button type="button" class="button" data-skip hidden>Skip intro</button>
+      <button type="button" class="button" data-skip disabled hidden>Starting…</button>
+      <span class="starting" aria-hidden="true"><span></span></span>
     </div>
 
+    {{if $.Architecture}}<div class="launch-cols"><div class="launch-try"><p class="label">What to try</p>{{end}}
     <ol class="slides" aria-roledescription="carousel" aria-label="Introduction to {{.Name}}">
       {{$n := len .Intro}}
       {{range $i, $s := .Intro}}
@@ -39,11 +42,27 @@
         {{end}}
       </li>
       {{end}}
-      <li class="slide final" aria-label="Ready" data-part="Open it">
-        <div class="main">
-          <span class="kicker">{{.Name}}</span>
+      {{/* The last part has three versions; the script shows the one that is true. Without the
+           script only the plain links show. */}}
+      <li class="slide final" aria-label="Open it" data-part="Open it">
+        <div class="main" data-when="waiting" hidden>
+          <span class="kicker">{{.Name}} · Starting</span>
+          <h1>Still waking up</h1>
+          <p class="plain">{{.Name}} sleeps when nobody is using it, and is starting now.</p>
+          <p class="hood">That usually takes well under a minute. This page will say so the moment it is up, and the button at the top will take you straight in.</p>
+        </div>
+        <div class="main" data-when="slow" hidden>
+          <span class="kicker">{{.Name}} · Delayed</span>
+          <h1>Taking longer than usual</h1>
+          <p class="plain">It still hasn't answered. It may be on its way, or something may be wrong.</p>
+          <div class="choices">
+            <a class="button" href="{{.Demo}}" data-open>Try opening it anyway</a>
+            <a class="button" href="/projects/{{.Slug}}">Read the story meanwhile</a>
+          </div>
+        </div>
+        <div class="main" data-when="ready">
+          <span class="kicker">{{.Name}} · Live</span>
           <h1>Ready when you are</h1>
-          <p class="plain" data-waiting>Still starting. It will open as soon as it's up.</p>
           <div class="choices">
             <a class="button primary" href="{{.Demo}}" data-open>Open {{.Name}} →</a>
             {{with .Tour}}<a class="button" href="{{.}}" data-tour-link>Watch the guided tour</a>{{end}}
@@ -53,6 +72,12 @@
     </ol>
 
     <nav class="parts" aria-label="Parts of the introduction" data-parts></nav>
+    {{if $.Architecture}}</div>
+    <div class="launch-how arch-embed">
+      <p class="label">How it works</p>
+      {{template "arch-stage" (stage . $.Architecture true)}}
+      <p class="caption">{{$.Architecture.Title}}. <a href="/projects/{{.Slug}}/architecture">Open the full architecture page →</a></p>
+    </div></div>{{end}}
     <p class="launch-foot">
       <a href="/projects/{{.Slug}}">Read the full story</a>
       {{with .Repo}}<a href="{{.}}" rel="noopener">Code</a>{{end}}

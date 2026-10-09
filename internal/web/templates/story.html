@@ -1,7 +1,8 @@
 {{with .Card}}{{template "head" (printf "%s · The Lighthouse" .Name)}}
 <meta name="description" content="{{.Plain}}">
 {{template "social" (social $ (printf "/projects/%s" .Slug) (printf "%s: %s" .Name .Headline) .Plain)}}{{end}}
-</head>
+{{if .Architecture}}<script src="{{asset "arch.js"}}" defer></script>
+{{end}}</head>
 <body>
 {{template "masthead" .}}
 <main id="main">
@@ -14,6 +15,7 @@
     <p class="byline">By {{.Owner}}{{with $s.ReadMinutes}} · {{.}} min read{{end}}{{with $s.Updated}} · Updated {{.}}{{end}}</p>
     <div class="actions center">
       {{if $p.Demo}}<a class="button primary" href="/go/{{$p.Slug}}">Launch the demo →</a>{{end}}
+      {{if $p.HasDiagram}}<a class="button" href="/projects/{{$p.Slug}}/architecture">How it is built</a>{{end}}
       {{with $p.Repo}}<a class="button" href="{{.}}" rel="noopener">Code</a>{{end}}
       {{with $p.Docs}}<a class="button" href="{{.}}" rel="noopener">Design notes</a>{{end}}
     </div>
@@ -57,8 +59,14 @@
   </aside>
 </section>
 
+{{if .Architecture}}
+<figure class="wrap stack-sm arch-embed" id="how-it-fits">
+  {{template "arch-stage" (stage $p .Architecture true)}}
+  <figcaption class="caption">{{.Architecture.Title}}. Select a part, or let it play. <a href="/projects/{{$p.Slug}}/architecture">Open the full architecture page →</a></figcaption>
+</figure>
+{{end}}
 {{with $s.Steps}}
-<figure class="wrap stack-sm figure-block">
+<figure class="wrap stack-sm figure-block{{if $.Architecture}} arch-fallback{{end}}">
   <div class="fig steps">
     {{range $i, $it := .Items}}<div class="step"><span class="n">{{inc $i}}</span><span class="t">{{$it.Title}}</span><span class="d">{{$it.Body}}</span></div>{{end}}
   </div>
@@ -71,7 +79,7 @@
   <p class="caption decisions-intro">What was chosen, why, and what it costs.</p>
   <div class="decisions">
     {{range $s.Decisions}}
-    <div class="decision">
+    <div class="decision" id="decision-{{anchor .Title}}">
       <h3>{{.Title}}</h3>
       <p><b>The choice.</b> {{.Choice}}</p>
       <p><b>Why.</b> {{.Why}}</p>
