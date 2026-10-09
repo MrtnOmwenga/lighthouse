@@ -133,7 +133,9 @@ jobs:
   smoke:
     name: Compose smoke test and console in the browser
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Installing the test browser's system packages usually takes a minute and has twice taken nine:
+    # the limit allows for that, so a slow package mirror isn't reported as a failing change.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Generate secrets for the stack
