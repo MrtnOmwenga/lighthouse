@@ -107,6 +107,51 @@ test.describe('the guide', () => {
     await expect(page.locator('#limits')).toHaveClass(/guide-point/);
   });
 
+  test('offers the page in three points to a reader who is skimming, once, and takes no for an answer', async ({ page }) => {
+    const asked: unknown[] = [];
+    await page.route('**/api/guide', async (route) => {
+      asked.push(route.request().postDataJSON());
+      await route.fulfill({ json: { kind: 'note', id: 'site/redacted', note: { kind: 'overview', project: 'redacted', route: '/projects/redacted', problem: 'Hidden text must stay hidden.', built: 'An editor that never sends it.', how: 'Each section is its own document.' } } });
+    });
+    await page.goto('/projects/redacted?guide=on');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const offer = page.getByRole('complementary', { name: 'An offer from Martin’s assistant' });
+    await expect(offer).toContainText('Skimming?');
+    await offer.getByRole('button', { name: 'Show me' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await expect(panel).toContainText('The problem: Hidden text must stay hidden.');
+    await expect(panel).toContainText('How it works: Each section is its own document.');
+    expect(asked).toEqual([{ note: 'site/redacted' }]); // written ahead of time: no question was sent to a model
+
+    // One offer a page; and after a "no" on another page, none for the rest of the tab.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(offer).toHaveCount(0);
+    await page.getByRole('dialog', { name: 'Martin’s assistant' }).getByRole('button', { name: 'Close' }).click();
+    await page.goto('/projects/ghostchat');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await offer.getByRole('button', { name: 'No thanks' }).click();
+    await page.goto('/projects/lighthouse');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(1500);
+    await expect(offer).toHaveCount(0);
+  });
+
+  test('offers a way to reach him, with this site\'s own links, when the service says a visitor is weighing him up', async ({ page }) => {
+    await page.route('**/api/guide', (route) => route.fulfill({ json: { conversation: 'e'.repeat(24), kind: 'answer', text: 'Two years as tech lead.', sources: [], further_reading: null, offer: 'cv' } }));
+    await page.goto('/about?guide=on');
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await panel.getByLabel('Your question').fill('What is his experience?');
+    await panel.getByLabel('Your question').press('Enter');
+    await expect(panel).toContainText('Two years as tech lead.');
+    // The CV when the site links one, otherwise his email: either way an address taken from this page.
+    const cv = await page.locator('.masthead a[href$=".pdf"]').getAttribute('href').catch(() => null);
+    const mail = await page.locator('.foot a[href^="mailto:"]').first().getAttribute('href');
+    const link = panel.getByRole('link', { name: cv ? 'Download Martin’s CV' : 'Write to Martin' });
+    await expect(link).toHaveAttribute('href', cv ?? mail ?? 'missing');
+  });
+
   test('when its service is away, it says so and the page carries on', async ({ page }) => {
     await page.route('**/api/guide', (route) => route.abort());
     await page.goto('/projects?guide=on');

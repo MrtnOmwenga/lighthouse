@@ -458,3 +458,6 @@ p { margin: 0; }
 .guide-place { color: var(--claret); }
 .guide-point { scroll-margin-top: 24px; background: linear-gradient(90deg, var(--claret-light), transparent 85%); box-shadow: -8px 0 0 var(--claret); transition: background 0.6s; }
 @media (prefers-reduced-motion: reduce) { .guide-point { transition: none; } }
+
+.guide-turn.note { border-left-color: var(--ink); }
+.guide-next .button { min-height: 40px; padding: 8px 14px; font-size: 15px; }

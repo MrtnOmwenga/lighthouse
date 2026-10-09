@@ -105,6 +105,15 @@
     } else if (next && STORIES[next.project]) {
       item.append(el('p', { className: 'guide-next' }, 'Read more: ', el('a', { href: STORIES[next.project], textContent: next.project === 'background' ? 'About Martin' : `the ${NAMES[next.project]} story` })));
     }
+    // An offer of the CV or a way to write. The addresses are this page's own links, found on the
+    // page: the service only ever says which of the two to offer.
+    const cv = document.querySelector('.masthead a[href$=".pdf"]');
+    const mail = document.querySelector('.foot a[href^="mailto:"]');
+    // The CV if that was offered and the site links one; otherwise a way to write.
+    const handoff = turn.offer === 'cv' && cv ? [cv, 'Download Martin’s CV'] : turn.offer && mail ? [mail, 'Write to Martin'] : null;
+    if (handoff) {
+      item.append(el('p', { className: 'guide-next' }, el('a', { href: handoff[0].getAttribute('href'), className: 'button', textContent: handoff[1] })));
+    }
     log.append(item);
     log.scrollTop = log.scrollHeight;
     return item;
@@ -147,7 +156,7 @@
     clearInterval(tick);
     waiting.remove();
     if (reply.conversation) talk.id = reply.conversation;
-    const turn = { from: 'guide', kind: reply.kind, text: reply.text, sources: reply.sources || [], further_reading: reply.further_reading || null };
+    const turn = { from: 'guide', kind: reply.kind, text: reply.text, sources: reply.sources || [], further_reading: reply.further_reading || null, offer: reply.offer || null };
     talk.turns.push(turn);
     show(turn);
     keep();
@@ -178,6 +187,75 @@
 
   document.body.append(launcher, panel);
   if (talk.open) open(true);
+
+  // Unasked offers, on a project's page. Two readers are worth interrupting, once, gently:
+  // one who is skimming (most of the page gone by in the first half minute) is offered the page in
+  // three points; one who has stayed on a part is offered that part in plainer words. What is shown
+  // was written ahead of time and comes back without any model being asked.
+  // One offer a page, none after a "no" in this tab, none while the window is open or someone is typing.
+  const project = /^\/projects\/([a-z0-9-]+)$/.exec(location.pathname)?.[1];
+  const quiet = () => !panel.hidden || document.querySelector('.guide-hello') || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  if (project && !talk.noOffers && 'IntersectionObserver' in window) {
+    const arrived = Date.now();
+    let offered = false;
+    const SKIM_WITHIN = 30_000, SKIM_DEPTH = 0.7, DWELL_FOR = 35_000;
+
+    const fetchNote = async (id) => {
+      const res = await fetch('/api/guide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', body: JSON.stringify({ note: id }) });
+      const body = await res.json();
+      if (!res.ok || !body.note) throw new Error('no note');
+      return body.note;
+    };
+    const offer = (id, words, yesLabel) => {
+      if (offered || quiet()) return;
+      offered = true;
+      const yes = el('button', { type: 'button', className: 'button primary', textContent: yesLabel });
+      const no = el('button', { type: 'button', className: 'button', textContent: 'No thanks' });
+      const card = el('aside', { className: 'guide-hello' }, el('p', { textContent: words }), el('div', { className: 'guide-hello-actions' }, yes, no));
+      card.setAttribute('aria-label', 'An offer from Martin’s assistant');
+      no.addEventListener('click', () => { card.remove(); talk.noOffers = true; keep(); });
+      yes.addEventListener('click', async () => {
+        card.remove();
+        open(true);
+        log.querySelector('.guide-starters')?.remove();
+        let turn;
+        try {
+          const note = await fetchNote(id);
+          const text = note.kind === 'overview'
+            ? `This page in three points.\n\nThe problem: ${note.problem}\n\nWhat Martin built: ${note.built}\n\nHow it works: ${note.how}`
+            : `“${note.heading}” in plainer words.\n\n${note.text}`;
+          turn = { from: 'guide', kind: 'note', text, sources: [], further_reading: null };
+        } catch {
+          turn = { from: 'guide', kind: 'limit', text: 'I can’t fetch that right now. Ask me anything about this page instead.', sources: [], further_reading: null };
+        }
+        talk.turns.push(turn);
+        show(turn);
+        keep();
+      });
+      document.body.append(card);
+    };
+
+    // Skimming: far down the page soon after arriving.
+    addEventListener('scroll', () => {
+      const depth = (scrollY + innerHeight) / document.documentElement.scrollHeight;
+      if (Date.now() - arrived < SKIM_WITHIN && depth > SKIM_DEPTH) offer(`site/${project}`, 'Skimming? I can give you this page in three short points.', 'Show me');
+    }, { passive: true });
+
+    // Dwelling: the same part's heading has been the one in view for a while, with the reader still there.
+    const parts = ['problem', 'solution', 'decisions', 'testing', 'limits'].map((id) => document.getElementById(id)).filter(Boolean);
+    let current = null, since = 0, lastActive = Date.now();
+    for (const e of ['scroll', 'pointermove', 'keydown', 'touchstart']) addEventListener(e, () => { lastActive = Date.now(); }, { passive: true });
+    const watch = new IntersectionObserver((entries) => {
+      for (const entry of entries) if (entry.isIntersecting && entry.target !== current) { current = entry.target; since = Date.now(); }
+    }, { rootMargin: '0px 0px -55% 0px' });
+    parts.forEach((p) => watch.observe(p));
+    setInterval(() => {
+      const present = document.visibilityState === 'visible' && Date.now() - lastActive < 20_000;
+      if (current && present && Date.now() - since > DWELL_FOR && Date.now() - arrived > SKIM_WITHIN) {
+        offer(`site/${project}#${current.id}`, `Want “${current.textContent.trim()}” in plainer words?`, 'Yes, explain it');
+      }
+    }, 2000);
+  }
 
   // On the front page, once per tab: say what this is and offer. Never opens by itself.
   if (location.pathname === '/' && !talk.greeted && !talk.open) {
