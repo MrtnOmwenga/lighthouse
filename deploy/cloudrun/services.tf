@@ -44,12 +44,16 @@ locals {
       RATE_LIMIT_PER_MINUTE = "300"
       LOG_LEVEL             = "info"
       JWT_SECRET            = random_password.redacted_jwt.result
+      EDGE_SECRET           = random_password.edge_demo["redacted"].result
+      CLIENT_IP_HEADER      = "X-Client-IP"
     }
     ghostchat = {
-      NODE_ENV       = "production"
-      SECURE_COOKIES = "true"
-      CORS_ORIGINS   = "https://ghostchat.${var.domain}"
-      JWT_SECRET     = random_password.ghostchat_jwt.result
+      NODE_ENV         = "production"
+      SECURE_COOKIES   = "true"
+      CORS_ORIGINS     = "https://ghostchat.${var.domain}"
+      JWT_SECRET       = random_password.ghostchat_jwt.result
+      EDGE_SECRET      = random_password.edge_demo["ghostchat"].result
+      CLIENT_IP_HEADER = "X-Client-IP"
     }
   }
   # Environment variables read from Secret Manager: the variable's name, and the secret it comes from.
@@ -142,8 +146,8 @@ resource "google_cloud_run_v2_service" "app" {
   depends_on = [google_secret_manager_secret_iam_member.reader, google_secret_manager_secret_version.s]
 }
 
-# Everyone may call the services; Lighthouse itself refuses anything that didn't come through the
-# edge (EDGE_SECRET), and the demos are public by design.
+# Everyone may call the services' addresses; each service itself refuses anything that didn't come
+# through the edge (EDGE_SECRET, its own), apart from its health check.
 resource "google_cloud_run_v2_service_iam_member" "public" {
   for_each = local.services
   name     = google_cloud_run_v2_service.app[each.key].name

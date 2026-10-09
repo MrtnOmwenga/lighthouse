@@ -55,10 +55,15 @@ A budget alert on the billing account is the safety net.
 
 ### Security
 
-- **Nothing bypasses the edge.** Cloud Run URLs (`*.run.app`) are public. Lighthouse runs with
-  `EDGE_SECRET`: any request without the Worker's secret header gets a 404 (health checks and the
-  tick excepted), so the Cloudflare layer can't be skipped and the visitor IP it passes on can't be
-  forged.
+- **Nothing bypasses the edge.** Cloud Run URLs (`*.run.app`) are public. Each service runs with
+  an `EDGE_SECRET` of its own: any request without the Worker's secret header is refused (health
+  checks and Lighthouse's tick excepted), so the Cloudflare layer can't be skipped and the visitor
+  IP it passes on can't be forged. The secrets differ, so a service can't use the one it receives
+  to pass as the edge to another.
+- **A clock for services that are asleep.** A timer inside a service that has scaled to zero
+  doesn't fire. The Worker has a Cloudflare cron trigger: each hour it calls the demos' own
+  clean-up paths (`/internal/…`), with that service's secret. No visitor's request reaches a path
+  under `/internal/`: the Worker answers 404 itself.
 - **The tick needs a Google-signed identity token** for Lighthouse's audience, issued to the
   scheduler's service account. Lighthouse verifies it with the standard library
   ([`internal/oidc`](../internal/oidc/oidc.go)): RS256 only, issuer, audience, expiry, the caller's

@@ -2,9 +2,13 @@
 // the request is forwarded as is (WebSocket upgrades included), plus:
 //   X-Client-IP      the visitor's address, which Cloudflare knows and the origin otherwise wouldn't
 //   X-Forwarded-Host the hostname the visitor used
-//   X-Edge-Secret    proof the request came through here, sent only to the hosts that check it
-//                    (SECRET_HOSTS: Lighthouse, which refuses requests without it)
+//   X-Edge-Secret    proof the request came through here. Each host has its own (EDGE_SECRETS),
+//                    so one service can't use what it receives to pass as the edge to another.
 // Headers a visitor sends with those names are replaced, never passed through.
+//
+// Nothing a visitor sends reaches a path under /internal/: those are for the edge's own scheduled
+// calls (CRON: host → paths), which give each service a clock that runs while it is scaled to
+// zero. A timer inside the service doesn't.
 //
 // It also keeps a copy of Lighthouse's public pages (PAGE_HOSTS). A copy less than a minute old
 // is served without waking the origin; when the origin fails or can't be reached, the last copy
@@ -22,17 +26,16 @@ export default {
     const url = new URL(request.url);
     const origins = JSON.parse(env.ORIGINS);
     const origin = origins[url.hostname];
-    if (!origin) return new Response("Not found", { status: 404 });
+    if (!origin || url.pathname.startsWith("/internal/")) return new Response("Not found", { status: 404 });
 
     const target = new URL(url.pathname + url.search, origin);
     const headers = new Headers(request.headers);
     headers.set("X-Client-IP", request.headers.get("CF-Connecting-IP") ?? "");
     headers.set("X-Forwarded-Host", url.hostname);
     headers.set("X-Forwarded-Proto", "https");
-    // The secret goes only to the origins that verify it: sending it to the others would hand
-    // them the means to pass as the edge.
     headers.delete("X-Edge-Secret");
-    if (JSON.parse(env.SECRET_HOSTS).includes(url.hostname)) headers.set("X-Edge-Secret", env.EDGE_SECRET);
+    const secret = JSON.parse(env.EDGE_SECRETS)[url.hostname];
+    if (secret) headers.set("X-Edge-Secret", secret);
 
     const toOrigin = (extra = {}) => fetch(target, {
       method: request.method,
@@ -53,6 +56,23 @@ export default {
       return toOrigin({ cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": ttl, "400-599": 0 } } });
     }
     return toOrigin();
+  },
+
+  // The scheduled calls. One failing doesn't stop the others; a failure is logged and the next
+  // hour tries again.
+  async scheduled(event, env, ctx) {
+    const origins = JSON.parse(env.ORIGINS);
+    const secrets = JSON.parse(env.EDGE_SECRETS);
+    const calls = Object.entries(JSON.parse(env.CRON ?? "{}")).flatMap(([host, paths]) => paths.map(async (path) => {
+      try {
+        const res = await fetch(new URL(path, origins[host]), { method: "POST", headers: { "X-Edge-Secret": secrets[host] ?? "" } });
+        if (!res.ok) console.error(`${host}${path}: HTTP ${res.status}`);
+      } catch (err) {
+        console.error(`${host}${path}: ${err.message}`);
+      }
+    }));
+    ctx.waitUntil(Promise.all(calls));
+    await Promise.all(calls);
   },
 };
 

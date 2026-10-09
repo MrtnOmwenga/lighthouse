@@ -5,9 +5,9 @@ import worker from "./worker.js";
 
 const env = {
   ORIGINS: JSON.stringify({ "site.example": "https://site.run.app", "demo.site.example": "https://demo.run.app" }),
-  SECRET_HOSTS: JSON.stringify(["site.example"]),
   PAGE_HOSTS: JSON.stringify(["site.example"]),
-  EDGE_SECRET: "s3cret",
+  EDGE_SECRETS: JSON.stringify({ "site.example": "s3cret", "demo.site.example": "demo-s3cret" }),
+  CRON: JSON.stringify({ "demo.site.example": ["/internal/housekeeping"] }),
 };
 const html = (text) => new Response(`<html><body><main>${text}</main></body></html>`, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=30" } });
 
@@ -22,7 +22,7 @@ beforeEach(() => {
     match: async (req) => store.get(req.url)?.clone(),
     put: async (req, res) => { store.set(req.url, res); },
   } };
-  globalThis.fetch = async (target, init) => { calls.push({ url: String(target), headers: init.headers, cf: init.cf }); return origin(String(target)); };
+  globalThis.fetch = async (target, init) => { calls.push({ url: String(target), method: init.method, headers: new Headers(init.headers), cf: init.cf }); return origin(String(target)); };
   origin = () => html("v1");
 });
 const ask = async (url, headers = {}) => {
@@ -32,12 +32,35 @@ const ask = async (url, headers = {}) => {
   return res;
 };
 
-test("the secret reaches only the host that checks it, and a forged one is dropped", async () => {
+test("each host gets its own secret, a forged one is dropped, and a host with none gets none", async () => {
   await ask("https://site.example/api/monitors", { "X-Edge-Secret": "forged" });
   await ask("https://demo.site.example/x", { "X-Edge-Secret": "forged" });
   assert.equal(calls[0].headers.get("X-Edge-Secret"), "s3cret");
-  assert.equal(calls[1].headers.get("X-Edge-Secret"), null);
+  assert.equal(calls[1].headers.get("X-Edge-Secret"), "demo-s3cret");
   assert.equal((await ask("https://other.example/")).status, 404);
+
+  const plain = { ...env, EDGE_SECRETS: JSON.stringify({ "site.example": "s3cret" }) };
+  await worker.fetch(new Request("https://demo.site.example/x", { headers: { "X-Edge-Secret": "forged" } }), plain, { waitUntil() {} });
+  assert.equal(calls[2].headers.get("X-Edge-Secret"), null);
+});
+
+test("no visitor reaches an internal path; the edge's scheduled call does, with that host's secret", async () => {
+  const res = await ask("https://demo.site.example/internal/housekeeping", { "X-Edge-Secret": "demo-s3cret" });
+  assert.equal(res.status, 404);
+  assert.equal(calls.length, 0);
+
+  origin = () => new Response(null, { status: 204 });
+  const pending = [];
+  await worker.scheduled({}, env, { waitUntil: (p) => pending.push(p) });
+  await Promise.all(pending);
+  assert.deepEqual(calls.map((c) => [c.method, c.url, c.headers.get("X-Edge-Secret")]), [["POST", "https://demo.run.app/internal/housekeeping", "demo-s3cret"]]);
+});
+
+test("a scheduled call that fails doesn't throw: the next hour tries again", async () => {
+  origin = () => { throw new Error("unreachable"); };
+  await worker.scheduled({}, env, { waitUntil() {} });
+  origin = () => new Response(null, { status: 500 });
+  await worker.scheduled({}, env, { waitUntil() {} });
 });
 
 test("a public page is served from its copy for a minute, then fetched again", async () => {

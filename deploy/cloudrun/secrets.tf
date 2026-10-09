@@ -30,6 +30,12 @@ resource "random_password" "edge" {
   special = false
 }
 
+resource "random_password" "edge_demo" {
+  for_each = toset(["redacted", "ghostchat"])
+  length   = 48
+  special  = false
+}
+
 locals {
   generated = {
     lighthouse-db-owner = { service = "lighthouse", value = neon_project.lighthouse.database_password }

@@ -20,8 +20,11 @@ jobs:
       - name: Formatting
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - run: go vet ./...
+      # The released staticcheck can't yet read what Go 1.27.2 compiles (a newer export format), so
+      # it runs on 1.27.1. Everything else, the release included, uses go.mod's toolchain line.
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+        env: { GOTOOLCHAIN: go1.27.1 }
       - name: Tests (Postgres via testcontainers)
         run: go test -race -count=1 -coverprofile=coverage.out ./...
       - run: go tool cover -func=coverage.out | tail -1
