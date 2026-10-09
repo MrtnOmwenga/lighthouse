@@ -1,6 +1,9 @@
 package site
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -30,6 +33,36 @@ func TestTheShippedDiagramsAreValid(t *testing.T) {
 	}
 	if len(a.In("database")) == 0 || a.Name("api") != "REST API" || a.Name("nobody") != "nobody" {
 		t.Error("parts are found by lane and named by id")
+	}
+}
+
+// Lighthouse's own diagram is written here, not copied from another repository, so this is where
+// the files it names are checked.
+func TestLighthousesOwnDiagramNamesFilesThatExist(t *testing.T) {
+	s, err := Load("../../deploy/site", "example.dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := s.Architectures["lighthouse"]
+	if a == nil {
+		t.Fatal("lighthouse has no diagram")
+	}
+	for _, p := range a.Parts {
+		if len(p.Code) == 0 {
+			t.Errorf("part %s names no code", p.ID)
+		}
+		for _, c := range p.Code {
+			if _, err := os.Stat(filepath.Join("../..", c)); err != nil {
+				t.Errorf("part %s: %s doesn't exist", p.ID, c)
+			}
+		}
+	}
+	for _, f := range a.Flows {
+		for _, path := range regexp.MustCompile(`\binternal/[\w./-]+\.go\b`).FindAllString(f.Proof, -1) {
+			if _, err := os.Stat(filepath.Join("../..", path)); err != nil {
+				t.Errorf("flow %s: proof names %s, which doesn't exist", f.ID, path)
+			}
+		}
 	}
 }
 

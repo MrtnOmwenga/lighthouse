@@ -1,0 +1,191 @@
+# How Lighthouse is put together, as data. The site draws this file as an interactive diagram
+# (/projects/lighthouse/architecture) and its assistant reads it to walk visitors through the
+# system. Lighthouse is its own project, so the file lives here; a test
+# (internal/site/architecture_test.go) fails if a part names a file that no longer exists.
+title: How Lighthouse is put together
+summary: >-
+  One Go program and one PostgreSQL database. A clock outside wakes it; it checks whatever is due,
+  decides what each result means, and writes the answer down. The pages you are reading are drawn
+  from those same rows.
+repository: https://github.com/MrtnOmwenga/lighthouse
+
+lanes:
+  - id: outside
+    label: Around it
+  - id: app
+    label: Lighthouse (one Go program on Cloud Run)
+  - id: database
+    label: PostgreSQL
+
+parts:
+  - id: edge
+    lane: outside
+    name: Edge
+    what: A Cloudflare Worker in front of this site and both demos. Visitors reach nothing else.
+    detail: >-
+      It adds a secret the services check, so nobody can skip it and call them directly, and it
+      passes on the visitor's address in a header that can't be forged from outside.
+    code: [deploy/cloudrun/edge/worker.js, deploy/cloudrun/edge.tf]
+    handbook: 01b-cloud-run-and-edge
+
+  - id: clock
+    lane: outside
+    name: Clock
+    what: Cloud Scheduler calls Lighthouse every 15 minutes with a signed request, and that is the only thing that starts a round of checks.
+    detail: >-
+      Lighthouse and its database both sleep when nothing is happening, which is why this runs for
+      free. The request carries a token that proves it came from the scheduler's own account.
+    code: [deploy/cloudrun/scheduler.tf, internal/web/tick.go, internal/oidc/oidc.go]
+    handbook: 01b-cloud-run-and-edge
+
+  - id: target
+    lane: outside
+    name: Sites being watched
+    what: The demos, and whatever a visitor adds in a sandbox.
+    detail: >-
+      A visitor's monitor can point anywhere on the public internet and nowhere else: addresses
+      inside the network are refused at the moment of connecting, after the name has been looked up.
+    code: [internal/monitor/probe.go]
+    handbook: 02-monitoring
+    story: decision-guard-against-ssrf-after-dns-resolution
+
+  - id: pages
+    lane: app
+    name: Public pages
+    what: The front page, the stories and the status page, drawn on the server from the database.
+    detail: >-
+      Every figure on the site is read from the checks Lighthouse has recorded. The pages are
+      complete without JavaScript; scripts only add to them.
+    code: [internal/web/site.go, internal/web/pages.go, internal/status/status.go]
+    handbook: 07-public-site
+    story: decision-server-rendered-and-complete-without-javascript
+
+  - id: scheduler
+    lane: app
+    name: Scheduler
+    what: Finds the monitors that are due and claims each one before checking it.
+    detail: >-
+      There is no queue service. Claiming is one update in the database that only one worker can
+      win, so two instances running at once never check the same monitor twice.
+    code: [internal/monitor/scheduler.go, internal/store/monitors.go]
+    handbook: 02-monitoring
+    story: decision-the-database-is-the-queue
+
+  - id: probe
+    lane: app
+    name: Probe
+    what: Makes the request and times it, holding no database transaction while it waits.
+    detail: >-
+      A check can take 30 seconds. Holding a transaction open that long would tie up a database
+      connection for every slow site, so the probe runs between two short transactions.
+    code: [internal/monitor/probe.go]
+    handbook: 02-monitoring
+    story: decision-probes-never-hold-a-transaction
+
+  - id: state
+    lane: app
+    name: State machine
+    what: Decides whether a result changes anything. One failure isn't an outage; several in a row are.
+    detail: >-
+      A pure function with no database and no clock: the monitor's state and a result go in, the
+      new state and what changed come out. That makes every edge testable, and property tests
+      run it over thousands of random sequences of results.
+    code: [internal/monitor/state.go]
+    handbook: 02-monitoring
+    story: decision-hysteresis-in-a-pure-state-machine
+
+  - id: alerts
+    lane: app
+    name: Alerts
+    what: Emails the owner when an incident opens or resolves.
+    detail: >-
+      Sent after the change is saved, never before, so an email is never about something the
+      database doesn't know.
+    code: [internal/alert/alert.go]
+    handbook: 02-monitoring
+
+  - id: checks
+    lane: database
+    name: Monitors and checks
+    what: What to watch, when it is next due, and every result, each row belonging to one tenant.
+    detail: >-
+      Row-level security keeps each visitor's sandbox apart from every other and from the public
+      monitors. The uptime figures on the site are sums over these rows.
+    code: [internal/store/monitors.go, internal/store/checks.go, internal/store/tenants.go]
+    handbook: 03-data-and-tenants
+    story: decision-visibility-fixed-at-creation
+
+  - id: incidents
+    lane: database
+    name: Incidents
+    what: Each outage, with a timeline of when it opened and resolved.
+    detail: >-
+      Written in the same transaction as the result that caused it, under a lock on the monitor's
+      row, so two results arriving together can't open two incidents.
+    code: [internal/store/incidents.go]
+    handbook: 02-monitoring
+
+connections:
+  - { from: edge, to: pages, label: visitors }
+  - { from: clock, to: scheduler, label: wakes it }
+  - { from: scheduler, to: checks, label: claims what is due }
+  - { from: scheduler, to: probe, label: runs the check }
+  - { from: probe, to: target, label: one guarded request }
+  - { from: probe, to: state, label: the result }
+  - { from: state, to: checks, label: result and new state }
+  - { from: state, to: incidents, label: opens or resolves }
+  - { from: state, to: alerts, label: what changed }
+  - { from: pages, to: checks, label: reads }
+  - { from: pages, to: incidents, label: reads }
+
+flows:
+  - id: incident
+    title: A site goes down and Lighthouse notices
+    summary: >-
+      From a clock ticking to an incident on the status page. Nothing here needs a queue, a lock
+      service or a second database.
+    steps:
+      - from: clock
+        to: scheduler
+        title: Woken
+        text: Cloud Scheduler calls with a signed request. Lighthouse starts if it was asleep.
+      - from: scheduler
+        to: checks
+        title: Claim
+        text: >-
+          One update claims each monitor that is due. If another instance is running, only one of
+          them gets each monitor.
+      - from: scheduler
+        to: probe
+        title: Hand over
+        text: The claim's transaction has ended. The probe starts with no database connection held.
+      - from: probe
+        to: target
+        title: Probe
+        text: >-
+          One request, through a guard that refuses internal addresses. This time the site doesn't
+          answer.
+      - from: probe
+        to: state
+        title: What does it mean?
+        text: >-
+          A single failure might be a blip, so the monitor is checked again straight away. Enough
+          failures in a row and the state machine says it is down.
+      - from: state
+        to: incidents
+        title: Record and open
+        text: >-
+          One transaction saves the result, the monitor's new state and the incident, under a lock
+          on the monitor's row.
+      - from: state
+        to: alerts
+        title: Tell someone
+        text: Only after that transaction commits is the email sent.
+      - from: pages
+        to: incidents
+        title: On the status page
+        text: The next person to open the status page sees the incident, read from the same rows.
+    proof: >-
+      Tests run two schedulers against one database and check each monitor is checked once
+      (internal/monitor/scheduler_test.go); property tests check the state machine changes state
+      only after the set number of results in a row (internal/monitor/state_test.go).

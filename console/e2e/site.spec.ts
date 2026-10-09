@@ -287,6 +287,20 @@ test.describe('the architecture page', () => {
     await expect(page.locator('#arch-now')).toContainText(/Step \d of 7/);
   });
 
+  test('every project with a diagram draws all of its connections and walks its flow', async ({ page }) => {
+    for (const [slug, wires, steps, first] of [['lighthouse', 11, 8, 'Woken'], ['ghostchat', 9, 7, 'Keys that never left']] as const) {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(`/projects/${slug}/architecture`);
+      await expect(page.locator('#diagram .arch-wire')).toHaveCount(wires);
+      await page.locator('#arch-now').getByRole('button', { name: 'Next', exact: true }).click();
+      await expect(page.locator('#arch-now')).toContainText(`Step 1 of ${steps}`);
+      await expect(page.locator('#arch-now')).toContainText(first);
+      await expect(page.locator('#diagram .arch-wire.live')).toHaveCount(1);
+    }
+    await page.goto('/projects/ghostchat/architecture');
+    await expect(page.locator('#arch-now')).toContainText('when Alice sends Bob a message');
+  });
+
   test('without its script it is still a complete page', async ({ browser }) => {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();

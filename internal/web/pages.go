@@ -47,13 +47,17 @@ var funcs = template.FuncMap{
 		}
 		return m
 	},
-	// lowerFirst lets a title continue a sentence: "A Director demotes" becomes "a Director demotes".
+	// lowerFirst lets a title continue a sentence: "A site goes down" becomes "a site goes down".
+	// A title that opens with a name ("Alice sends Bob a message") is left as it is.
 	"lowerFirst": func(v string) string {
-		if v == "" {
-			return v
+		for _, article := range []string{"A ", "An ", "The "} {
+			if strings.HasPrefix(v, article) {
+				return strings.ToLower(v[:1]) + v[1:]
+			}
 		}
-		return strings.ToLower(v[:1]) + v[1:]
+		return v
 	},
+
 	"minutes": func(m float64) string {
 		if m < 1 {
 			return "under a minute"
