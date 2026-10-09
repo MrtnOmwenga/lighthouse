@@ -108,6 +108,21 @@
 
     // Wires between two rows run down, across and down again. Each gets its own height for the
     // part that runs across, so two wires in the same gap never lie on top of one another.
+    // A wire whose way down is blocked by a part in a row between goes round by the nearer edge
+    // of the diagram instead of behind that part, where it would look joined to it.
+    const { width: across } = root.getBoundingClientRect();
+    let detours = 0;
+    for (const wire of plan) {
+      if (wire.route !== 'down') continue;
+      const [top, bottom] = [Math.min(wire.p.y, wire.q.y), Math.max(wire.p.y, wire.q.y)];
+      const blocked = [...boxes.values()].some((c) => c !== wire.a && c !== wire.b && c.t > top && c.b < bottom
+        && [wire.p.x, wire.q.x].some((x) => x > c.l - 6 && x < c.r + 6));
+      if (!blocked) continue;
+      const left = (wire.p.x + wire.q.x) / 2 < across / 2;
+      wire.route = 'round';
+      wire.edge = left ? 7 + detours * 7 : across - 7 - detours * 7;
+      detours += 1;
+    }
     const gaps = new Map();
     for (const wire of plan) {
       if (wire.route !== 'down' || Math.abs(wire.p.x - wire.q.x) < 1) continue;
@@ -134,7 +149,7 @@
     }
     svg.replaceChildren(defs);
     const placed = [];
-    wires = plan.map(({ link, a, b, route, p, q, track }) => {
+    wires = plan.map(({ link, a, b, route, p, q, track, edge }) => {
       let d;
       let at;
       if (route === 'across') {
@@ -147,6 +162,10 @@
         const lift = Math.min(p.y, q.y) - 20;
         d = `M${p.x} ${p.y}V${lift}H${q.x}V${q.y}`;
         at = { x: (p.x + q.x) / 2, y: lift - 6 };
+      } else if (route === 'round') {
+        const down = q.y > p.y ? 1 : -1;
+        d = `M${p.x} ${p.y}V${p.y + down * 12}H${edge}V${q.y - down * 16}H${q.x}V${q.y}`;
+        at = { x: (edge + q.x) / 2, y: q.y - down * 16 - 6 };
       } else if (track === undefined) {
         d = `M${p.x} ${p.y}V${q.y}`;
         at = { x: p.x, y: (p.y + q.y) / 2 + 4 };

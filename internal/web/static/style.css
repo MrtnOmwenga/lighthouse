@@ -424,9 +424,13 @@ p { margin: 0; }
 .arch-links .l { color: var(--muted); }
 @media (max-width: 1024px) { .arch-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 680px) {
-  .arch { padding: 14px 12px 22px; gap: 40px; }
-  .arch-parts { gap: 34px 22px; }
-  .arch-part { min-width: 92px; min-height: 44px; font-size: 15px; padding: 8px 10px; }
+  .arch { padding: 14px 20px 22px; gap: 40px; }
+  /* Two parts to a row, with room between the rows for the wires and their labels. */
+  .arch { gap: 52px; }
+  .arch-lane { gap: 34px; }
+  .arch-parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 54px 40px; }
+  .arch-part { min-width: 0; min-height: 46px; font-size: 15px; padding: 8px 8px; }
+  .arch-parts .arch-part:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 20px); }
   .arch-list, .arch-steps { grid-template-columns: 1fr; }
   .arch-caption { padding: 12px 12px 4px; gap: 10px; min-height: 190px; }
   .arch-badge { width: 34px; height: 34px; font-size: 18px; }
