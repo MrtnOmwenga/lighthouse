@@ -75,7 +75,7 @@ test.describe('the guide', () => {
     await expect(page.getByRole('complementary', { name: 'An offer from Martin’s assistant' })).toHaveCount(0);
   });
 
-  test('takes the reader to the heading an answer points at, and marks it; refuses an address that isn\'t this site\'s', async ({ page }) => {
+  test('takes the reader to the heading an answer comes from, and marks it; refuses an address that isn\'t this site\'s', async ({ page }) => {
     await page.route('**/api/guide', (route) => route.fulfill({ json: {
       conversation: 'd'.repeat(24), kind: 'answer', text: 'Six decisions shaped it.',
       sources: [
@@ -90,16 +90,15 @@ test.describe('the guide', () => {
     const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
     await panel.getByLabel('Your question').fill('What were the key decisions in Redacted?');
     await panel.getByLabel('Your question').press('Enter');
-    const sources = panel.getByRole('list', { name: 'Where this comes from' });
-    // Only the address on this site became a link; the others are shown as plain words.
-    await expect(sources.getByRole('link')).toHaveCount(1);
-    await expect(sources).toContainText('Redacted · Elsewhere');
-
-    await sources.getByRole('link', { name: 'Redacted · Key decisions' }).click();
+    // The answer takes the reader to the first place it comes from, with the window still open.
     await expect(page).toHaveURL(/\/projects\/redacted#decisions$/);
     const heading = page.locator('#decisions');
     await expect(heading).toHaveClass(/guide-point/);
     await expect(heading).toBeInViewport();
+    const sources = page.getByRole('dialog', { name: 'Martin’s assistant' }).getByRole('list', { name: 'Where this comes from' });
+    // Only the address on this site became a link; the others are shown as plain words.
+    await expect(sources.getByRole('link')).toHaveCount(1);
+    await expect(sources).toContainText('Redacted · Elsewhere');
 
     // Already on that page: the next place is reached without leaving it.
     await page.getByRole('dialog', { name: 'Martin’s assistant' }).getByRole('link', { name: /What it does not do/ }).click();
@@ -258,7 +257,6 @@ test.describe('the architecture page', () => {
     const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
     await panel.getByLabel('Your question').fill('Where are permissions decided?');
     await panel.getByLabel('Your question').press('Enter');
-    await panel.getByRole('link', { name: /Policy/ }).click();
     await expect(page).toHaveURL(/\/projects\/redacted\/architecture#part-policy$/);
     await expect(page.locator('#part-policy')).toHaveClass(/sel/);
     await expect(page.locator('#arch-now')).toContainText('One file of plain functions');
