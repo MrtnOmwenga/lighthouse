@@ -1,6 +1,6 @@
 # Build list from the review of GhostChat
 
-**State on 2026-10-09:** 6 of 12 built and released, and a flaky browser test fixed (a sent image was given five seconds to appear). Left: two instances (G4), code transparency (G6), forward secrecy (G7), detecting withheld messages (G8), and the two later-version ideas.
+**State on 2026-10-09:** 8 of 12 built (G6 the first half), one decided against (G8), and forward secrecy (G7) and two later-version ideas deferred, with reasons at the end.
 
 Things the review finds that should be built or fixed. Nothing is built during the review.
 Sizes: S (under an hour), M (a few hours), L (a day or more).
@@ -12,14 +12,14 @@ Carried over from the Lighthouse build:
 | G1 | **Bring the release pipeline level with Lighthouse's:** release only after CI, verify the signature, test a candidate revision before it takes traffic, roll back on failure, pin actions to commit hashes. | It still releases on every push to the release branch. | M | **Built** (2026-10-09) |
 | G2 | **Required status checks on the release branch.** | The branch requires a pull request, with no checks. | S | **Built**: five required checks |
 | G3 | **Refuse requests that didn't come through the edge,** as Lighthouse does. | The service answers on its `*.run.app` address, bypassing Cloudflare and its client-address header, so its rate limits can be dodged there. | S | **Built**; each service has its own secret |
-| G4 | **Run on two instances, with a test proving a message sent through one reaches a reader on the other.** | The Redis adapter for sharing between instances exists; it has never run on more than one. | L | Being built: proved in CI with two containers |
+| G4 | **Run on two instances, with a test proving a message sent through one reaches a reader on the other.** | The Redis adapter for sharing between instances exists; it has never run on more than one. | L | **Built**: five tests with two instances sharing MongoDB and Redis. The existing code needed no change |
 
 ## From Part 1: accounts and keys
 
 | # | What | Why | Size | State |
 |---|---|---|---|---|
 | G5 | **Make signing out end the session on the server** (a session id that can be revoked, or a short token with a revocable refresh). | The session is a signed token in a cookie; signing out only deletes the cookie, and a copied token works until it expires. | M | **Built**: a session is a row; signing out deletes it and closes its sockets |
-| G6 | **Code transparency for the web client** (Martin's question, 2026-10-08: how to stop the server sending code that leaks keys). Build the bundle reproducibly in CI; sign its hash keylessly (the GitHub identity, as the images already are); publish the hash in GhostChat's own transparency log; and give users a way to check that what their browser received is what was published: a small browser extension, or serving the client from a content-addressed address so the code can't change without the address changing. | The server delivers the code that does the encryption, so a compromised server can send code that leaks keys. Nothing a page loads from that server can check the server. The check has to come from outside it. | L | Being built: the first half (reproducible build, signed hash, published in the log) |
+| G6 | **Code transparency for the web client** (Martin's question, 2026-10-08: how to stop the server sending code that leaks keys). Build the bundle reproducibly in CI; sign its hash keylessly (the GitHub identity, as the images already are); publish the hash in GhostChat's own transparency log; and give users a way to check that what their browser received is what was published: a small browser extension, or serving the client from a content-addressed address so the code can't change without the address changing. | The server delivers the code that does the encryption, so a compromised server can send code that leaks keys. Nothing a page loads from that server can check the server. The check has to come from outside it. | L | **Built**, first half: a reproducible build whose digest is signed into Sigstore's public log and checked on the transparency page. The browser extension is deferred |
 
 ## From Part 2: messages
 

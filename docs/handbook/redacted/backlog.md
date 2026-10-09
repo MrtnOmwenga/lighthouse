@@ -1,6 +1,6 @@
 # Build list from the review of Redacted
 
-**State on 2026-10-09:** 19 of 26 built, and one decided against (R19). Left: two instances (R4), sign-up enumeration (R9, needs email), the title and `body` decision (R16), compartments (R17), and two demo additions (R24, R26).
+**State on 2026-10-09:** 22 of 26 built, one decided against (R19) and three deferred (R9, R17, R26), with reasons at the end.
 
 Things the part-by-part review finds that should be built or fixed. Nothing is built during the
 review. Sizes: S (under an hour), M (a few hours), L (a day or more).
@@ -12,7 +12,7 @@ Carried over from the Lighthouse build:
 | R1 | **Bring the release pipeline level with Lighthouse's:** release only after CI, verify the signature, test a candidate revision before it takes traffic, roll back on failure, pin actions to commit hashes. | It still releases on every push to the release branch, with none of those. | M | **Built** (2026-10-09) |
 | R2 | **Required status checks on the release branch.** | The branch requires a pull request, with no checks; some jobs only run conditionally, so the list needs choosing. | S | **Built**: seven required checks |
 | R3 | **Refuse requests that didn't come through the edge,** as Lighthouse does. | The service answers on its `*.run.app` address, bypassing Cloudflare and its client-address header, so its rate limits can be dodged there. | S | **Built**; each service has its own secret |
-| R4 | **Run on two instances, with a test proving an edit through one reaches a reader on the other.** | The code for sharing state between instances exists (PostgreSQL LISTEN/NOTIFY); it has never run on more than one. | L | Being built: proved in CI with two containers |
+| R4 | **Run on two instances, with a test proving an edit through one reaches a reader on the other.** | The code for sharing state between instances exists (PostgreSQL LISTEN/NOTIFY); it has never run on more than one. | L | **Built**: live edits now cross instances through the database, proved by tests with two instances. The live site still runs one |
 
 ## From Part 1: the permission model
 
@@ -49,7 +49,7 @@ Carried over from the Lighthouse build:
 
 | # | What | Why | Size | State |
 |---|---|---|---|---|
-| R16 | **Decide what a document's title and `body` are:** classify them like a section, or drop `body` now that content lives in sections. | Sections are redacted; the title and the original body field are shown to anyone who can open the document. | M | Being built: `body` goes; the title stays an unclassified label |
+| R16 | **Decide what a document's title and `body` are:** classify them like a section, or drop `body` now that content lives in sections. | Sections are redacted; the title and the original body field are shown to anyone who can open the document. | M | **Built**: `body` is gone from the API; the title stays an unclassified label (the column is dropped in a later release) |
 | R17 | *(Optional)* **Compartments:** a need-to-know label on a section, held by named members, beside the clearance ladder. | Real classification isn't one ladder; "secret" doesn't mean every secret-cleared person. | L | **Deferred** (2026-10-09) |
 
 ## From Part 6: live collaboration
@@ -67,7 +67,7 @@ Carried over from the Lighthouse build:
 | R21 | **Clean up expired demos from outside the server's own timer:** run the clean-up when a new demo is created, or from a scheduled call. | The timer doesn't fire while the Cloud Run instance is idle, so expired demo organizations linger until the next visit. | S | **Built**: runs when a demo starts and on sign-in |
 | R22 | **A layout for narrow screens that keeps cause and effect together** (the Director's desk beside one chosen pane, with a switcher). | Below 900 pixels the four panes stack and the reaction is off screen. | M | **Built** |
 | R23 | **Have "Play it for me" wait for each effect** before moving on, as "Guide me" does, instead of a fixed number of seconds. | On a slow connection a caption can move on before its effect appears. | S | **Built** |
-| R24 | **More chapters in the tours** (Martin, 2026-10-08): an auditor who can read the log and change nothing, a share that expires while the guest is reading, an API key limited to its scopes, a department admin who can't promote a peer. Chosen from a menu, so the first tour stays two minutes. | The demo tells one story; much of the API is only visible in its tests. | L | Being built: two chapters (an expiring share, an auditor) |
+| R24 | **More chapters in the tours** (Martin, 2026-10-08): an auditor who can read the log and change nothing, a share that expires while the guest is reading, an API key limited to its scopes, a department admin who can't promote a peer. Chosen from a menu, so the first tour stays two minutes. | The demo tells one story; much of the API is only visible in its tests. | L | **Built**: two chapters, a share that runs out and an auditor |
 | R25 | **"How do I know this is real?"** (Martin's question, 2026-10-08): a panel in the room that shows it, not says it: each pane's own member id and connection, a live count of requests the server refused, and a one-line instruction for checking in the browser's network tab that the Intern's pane never receives the hidden text. | The landing page states that everything is enforced on the server, and the first tour caption says each pane is a separate session. Nothing lets a sceptical visitor check that without opening the code. | M | **Built**: the "Is this real?" panel |
 | R26 | **Bring your own team** (Martin's idea, 2026-10-08): leave the tour and make the agency yours: add departments and members, and invite real people by link, each joining as an agent from their own device. | The demo is one person playing four characters in one browser. Two people on two laptops, one demoting the other mid-sentence, is far more convincing, and it exercises member creation and invitations, which have no screen today. Needs invitation links (which the API doesn't have), limits on a public demo, and a look at abuse. | L | **Deferred** (2026-10-09) |
 

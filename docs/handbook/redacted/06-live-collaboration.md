@@ -157,11 +157,34 @@ contain:
 
 Here the order of two steps is the whole protection: disconnect, then apply.
 
+## What happens with more than one server?
+
+Each server keeps its own copy of an open section in memory. Permission changes always reached
+every server, because they are announced through the database. **Edits did not**, and nobody knew
+until a test started two servers and put one person on each: an edit accepted by one never
+reached the reader on the other, and each server's save overwrote the other's.
+
+Now an accepted edit is sent to the other servers through the same database channel (PostgreSQL
+`NOTIFY`) and applied to their copies. No extra service is needed.
+
+| Situation | What happens |
+|---|---|
+| An edit on one server | Sent as an update; the others apply it. Updates of this kind merge in any order, so nothing needs sequencing. |
+| A server opens a section others are editing | The database lags unsaved typing, so the newcomer says what it has and whoever has more answers with the difference. |
+| An update too big for a notification (8000 bytes) | The sender saves first and tells the others to read it. |
+| Two servers save | Each merges what is stored into its copy before saving, so a save can only add. |
+| Words classified on one server, a reader below them on another | The receiving server disconnects that reader before applying the update. |
+
+Seven tests cover it. With the sending line removed, five of them fail, which is the evidence
+that the tests are testing the sharing and not something else.
+
+The live site still runs one server. This makes a second one safe; it doesn't add one.
+
 ## Known gaps
 
 - **With several server instances, the lock isn't complete.** Only the instance that handled the
   change locks before commit; the others lock when the notification arrives, milliseconds later.
-  The service has only ever run as one instance. Closing it fully means sending each
+  In production the service has only ever run as one instance. Closing it fully means sending each
   organization's connections to one instance, or checking access on every incoming edit.
 - **A demoted editor's last keystrokes stay on their own screen.** The server refused them, so
   nobody else sees them and they aren't saved, but their page shows them until it reloads.

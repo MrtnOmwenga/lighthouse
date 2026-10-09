@@ -59,12 +59,13 @@ only what is unusual about them.
 - **Behaviour over time is tested** with real connections: a share running out, a token expiring,
   a sign-out on one device leaving the other connected.
 - **Every migration is run down and up again** and the schemas compared.
+- **Two servers are tested together,** sharing only the database: edits, saves, classification,
+  demotion and sign-out all cross ([Part 6](06-live-collaboration.md)). The first run of that
+  test is what showed edits weren't shared.
 - **Every route must declare its action,** and a handler that skips its check is shown to fail.
 
 ## Known gaps
 
-- **Nothing has run on more than one instance,** so the code that shares state between instances
-  is untested where it matters.
 - **The load test is small and from one organization:** it guards against a regression, and says
   little about real capacity.
 

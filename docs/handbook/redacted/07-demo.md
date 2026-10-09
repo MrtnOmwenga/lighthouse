@@ -134,6 +134,14 @@ project rests on: the Intern's browser never receives the text of sections above
   Intern's page has no control for, refused with a 403 that then shows in the Director's log. Its
   first draft named a codename in its instructions, and the test that scans everything the
   Intern's browser receives failed: the page's own script is something the Intern downloads.
+- **Two more chapters,** chosen from a menu and offered at the end of the first tour:
+  - *A share that runs out.* The Director shares the briefing for twenty seconds. The Liaison is
+    let in, and then put out again with no request made by anyone: the clock, and the server's
+    sweep of open connections.
+  - *The auditor.* Created and signed in on the spot. They have no pane, so their requests and
+    the server's answers are listed under the caption: every member and the whole log read, the
+    briefing returned with its classified sections redacted (reading the record isn't
+    clearance), three changes refused, and the refusals then counted in the log.
 - **The surveillance log lists changes and refusals.** Who opened which classified section is in
   the chain too; the desk leaves those out of its six lines so they don't bury the changes.
 
@@ -145,8 +153,8 @@ project rests on: the Intern's browser never receives the text of sections above
 - **All four tokens sit in one browser's session storage,** the Director's included, and last the
   whole two hours. Acceptable for a throwaway agency, and not how a real client should hold
   tokens ([Part 3](03-signing-in.md)).
-- **It demonstrates one story.** API keys, department admins, auditors and temporary shares are in
-  the API and its tests, and nowhere in the demo.
+
+- **API keys and department admins still aren't in the demo.** They are in the API and its tests.
 
 ## Questions and answers
 

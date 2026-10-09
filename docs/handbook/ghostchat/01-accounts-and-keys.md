@@ -125,12 +125,31 @@ made beforehand worked until it expired.
 
 The cost is one database lookup per request. That is the trade every revocable session makes.
 
+## How do you know which code the server is sending?
+
+A hostile server could send a client that leaks keys. A page can't guard against that, because
+the page is the thing the server sent. What can be done is to make **which client was published**
+a public fact, so a different one is detectable by anyone who looks.
+
+| Step | What it gives |
+|---|---|
+| The build lists every file with its hash in `bundle.json`; one digest over the list names the build | A short name for "exactly this client" |
+| The release builds the client twice, inside the image and outside it, and stops if they differ | Anyone rebuilding from the source gets the same digest |
+| The release signs the image into Sigstore's public log with that digest attached | A record of what was published that the server doesn't control |
+| The transparency page re-fetches every file and compares, and shows the command that checks the digest against the public record | A check from inside the page, and the means to check from outside it |
+
+The first time the page's check ran against the live site, it failed: **`index.html` was not the
+file that had been built.** Cloudflare, in front of the server, was inserting its own analytics
+script into every page on all three sites. The sites' security policies stopped that script
+running, so nothing had been collected, but the pages were not what the servers sent. The edge
+now marks pages "do not transform". The check found a real modification on its first day.
+
 ## Known gaps
 
-- **The server delivers the code that does the encryption.** A malicious or compromised server
-  could send JavaScript that leaks keys. This is the standing weakness of end-to-end encryption on
-  the web. A strict content-security policy limits what the page can load; closing it properly
-  needs a signed, packaged client, or a browser extension that checks the code's hash.
+- **The server delivers the code that does the encryption,** and a browser can't check that code
+  before running it. What is published can now be checked from outside (see below); checking
+  automatically in every browser needs something the server didn't send, such as an extension,
+  and isn't built.
 - **The phrase is everything.** Anyone who obtains it can regenerate every key the account will
   ever have. Replacing keys doesn't help, because the replacements come from the same phrase;
   only a reset to a new phrase does, and contacts are warned when that happens.
@@ -173,3 +192,8 @@ The server supplies the code. The user has to trust that today's JavaScript is t
 **Why isn't a signed token enough for a session?**
 A signature proves the server issued it, and nothing can take that back before it expires. To end
 a session you need something on the server to delete: here, a row the token names.
+
+**The server sends the code that encrypts. How do you defend that?**
+Not completely. The build is reproducible and its digest is signed into a public log at release,
+so a client that differs is detectable from outside. A browser still runs what it is sent; closing
+that needs a checker the server didn't send.

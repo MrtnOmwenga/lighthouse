@@ -16,7 +16,7 @@ sources:
   - deploy/cloudrun/grafana.tf
   - deploy/cloudrun/alerts.tf
   - internal/web/server.go
-verified: 2026-10-07
+verified: 2026-10-09
 ---
 
 # Shipping the apps: Cloud Run and the edge
@@ -308,6 +308,20 @@ Each layer costs money and complexity, so it is added when an outage would cost 
 layer does. Here, layers 2 and 5 are in place (without the percentage split, which needs more
 traffic than this site has to mean anything), plus nightly backups; one instance, one region and
 free database plans remain.
+
+## What changed on 2026-10-09?
+
+- **A secret per service.** The demos now also refuse anything that didn't come through the edge,
+  and each service has its own secret, so one can't use what it receives to pass as the edge to
+  another.
+- **Pages leave as the origin wrote them.** Cloudflare was inserting its analytics script into
+  every HTML page on all three sites. Each site's security policy (`script-src 'self'`) stopped
+  it running, so nothing was collected, but the pages weren't what the servers sent. It was found
+  by GhostChat's check of served files against their published hashes. The Worker now marks HTML
+  `no-transform`, the standard instruction not to alter a response in transit.
+- **A scheduled call is written and not yet running.** The Worker has a handler that calls the
+  demos' clean-up paths each hour, to give services that scale to zero a clock. Cloudflare won't
+  create the schedule until the account has a workers.dev subdomain.
 
 ## Known gaps
 

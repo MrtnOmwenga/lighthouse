@@ -127,8 +127,6 @@ tend not to be trusted, or checked.
   This is the deliberate trade for never sending hidden text.
 - **What was already sent can't be unsent.** Classify a paragraph that someone has open, and they
   are disconnected before anything more reaches them, but they have seen what was there.
-- **A document's title and its original `body` field have no classification.** Only sections do.
-  Anyone who can open the document reads its title.
 - **Clearance is one ladder.** Real classification also has compartments ("secret, and only for
   people on this operation"). There is no need-to-know beyond the document's own access rules.
 - **Lengths and positions leak,** as the table says, by design.
@@ -136,6 +134,11 @@ tend not to be trusted, or checked.
   every change.
 - **A projection lags the full text by a tenth of a second.** It is late, never wrong: it only
   ever holds what its readers may see.
+
+- **A document's title has no classification.** It is the label people find the document by,
+  like the cover of a file, and anyone who can open the document reads it. Until 2026-10-09 a
+  document also had a `body` field outside its sections, readable the same way; that field is
+  gone, so all of a document's text is now in sections, where it is classified.
 
 ## Questions and answers
 

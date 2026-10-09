@@ -140,6 +140,13 @@ edge never forwards a visitor's request to `/internal/`, and the server refuses 
 doesn't carry the edge's secret. The edge's hourly scheduled call is written and waits on one
 account setting; until then the in-process timer still runs whenever the server is awake.
 
+## Does it work on more than one server?
+
+Yes, and that is now tested: two servers sharing only the database and Redis, with people on
+different ones. A message crosses, a session started on one opens a socket on the other, signing
+out through one closes the socket held by the other, presence is one count across both, and
+joining a room through one subscribes a socket on the other. The existing code passed unchanged.
+
 ## Known gaps
 
 - **Trust on first use.** A browser accepts the log's signing key the first time it sees it, and a
