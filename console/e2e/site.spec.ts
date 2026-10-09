@@ -288,7 +288,7 @@ test.describe('the architecture page', () => {
   });
 
   test('every project with a diagram draws all of its connections and walks its flow', async ({ page }) => {
-    for (const [slug, wires, steps, first] of [['lighthouse', 11, 8, 'Woken'], ['ghostchat', 9, 7, 'Keys that never left']] as const) {
+    for (const [slug, wires, steps, first] of [['lighthouse', 11, 10, 'You open a page'], ['ghostchat', 8, 7, 'Keys that never left']] as const) {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto(`/projects/${slug}/architecture`);
       await expect(page.locator('#diagram .arch-wire')).toHaveCount(wires);
@@ -298,7 +298,7 @@ test.describe('the architecture page', () => {
       await expect(page.locator('#diagram .arch-wire.live')).toHaveCount(1);
     }
     await page.goto('/projects/ghostchat/architecture');
-    await expect(page.locator('#arch-now')).toContainText('when Alice sends Bob a message');
+    await expect(page.locator('#arch-now')).toContainText('the walk-through: One message, from the sender to the recipient');
   });
 
   test('without its script it is still a complete page', async ({ browser }) => {
