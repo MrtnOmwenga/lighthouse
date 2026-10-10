@@ -30,16 +30,19 @@
     history.replaceState(history.state, '', location.pathname + location.search);
   }
 
-  // A preview: off unless switched on in this browser by opening any page with ?guide=on.
+  // On the site it is there for everyone. A visitor who doesn't want it opens any page with
+  // ?guide=off, which this browser remembers; ?guide=on brings it back.
+  // Inside a demo it appears only for a visitor who was already talking to it on the site (the
+  // "#guide=" above), never for someone who came to the demo directly.
   const params = new URLSearchParams(location.search);
   if (params.has('guide')) {
-    try { params.get('guide') === 'on' ? localStorage.setItem('lh_guide', '1') : localStorage.removeItem('lh_guide'); } catch { /* storage unavailable */ }
+    try { localStorage.setItem('lh_guide', params.get('guide') === 'off' ? '0' : '1'); } catch { /* storage unavailable */ }
     params.delete('guide');
     const q = params.toString();
     history.replaceState(history.state, '', location.pathname + (q ? `?${q}` : '') + location.hash);
   }
-  let on = false;
-  try { on = localStorage.getItem('lh_guide') === '1'; } catch { /* stays off */ }
+  let on = !SITE;
+  try { on = SITE ? localStorage.getItem('lh_guide') === '1' : localStorage.getItem('lh_guide') !== '0'; } catch { /* the default stands */ }
   if (!on) return;
   if (config.css) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: config.css }));
 
@@ -233,7 +236,9 @@
   // why, once, in this window.
   const launch = document.querySelector('[data-launch]');
   if (launch?.hasAttribute('data-guide-follows')) {
-    const carry = (url) => `${url.split('#')[0]}#guide=${talk.id || 'on'}`;
+    // Only a visitor who has been talking to it is followed: the demo's own page stays the
+    // demo's for everyone else.
+    const carry = (url) => (talk.id && talk.turns.length ? `${url.split('#')[0]}#guide=${talk.id}` : url);
     window.lighthouseGuide = { carry };
     for (const a of document.querySelectorAll('a[data-open], a[data-tour-link]')) a.addEventListener('click', () => { a.href = carry(a.href); });
   }
