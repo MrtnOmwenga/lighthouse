@@ -137,6 +137,9 @@ test.describe('the guide', () => {
     await expect(offer).toContainText('Skimming?');
     await offer.getByRole('button', { name: 'Show me' }).click();
     const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    // Accepting is shown as the reader's own question, so one note can be told from the next.
+    await expect(panel.locator('.guide-turn.you')).toHaveText('Give me the Redacted page in three points.');
+    await expect(panel).toContainText('The Redacted page in three points.');
     await expect(panel).toContainText('The problem: Hidden text must stay hidden.');
     await expect(panel).toContainText('How it works: Each section is its own document.');
     expect(asked).toEqual([{ note: 'site/redacted' }]); // written ahead of time: no question was sent to a model

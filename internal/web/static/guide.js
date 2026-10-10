@@ -171,7 +171,7 @@
     send.disabled = true;
     log.querySelector('.guide-starters')?.remove();
     talk.turns.push({ from: 'you', text: question });
-    show({ from: 'you', text: question });
+    const line = show({ from: 'you', text: question });
     input.value = '';
     const waiting = show({ from: 'guide', kind: 'waiting', text: WAITING[0] });
     let step = 0;
@@ -194,6 +194,7 @@
     talk.turns.push(turn);
     show(turn);
     keep();
+    log.scrollTop = line.offsetTop - log.offsetTop - 8; // the question at the top, its answer under it
     // An answer takes the reader to where it comes from: the first of its sources that is a place
     // on this site. Not on a narrow screen, where this window would have to close to show it.
     const lead = !SITE && turn.kind === 'answer' && innerWidth > 560 && turn.sources.find((s) => typeof s.route === 'string' && PLACE.test(s.route));
@@ -262,7 +263,9 @@
       if (!res.ok || !body.note) throw new Error('no note');
       return body.note;
     };
-    const offer = (id, words, yesLabel) => {
+    // `asked` is what accepting the offer amounts to asking: it is shown in the window as the
+    // reader's own line, so each note has a question above it like any other reply.
+    const offer = (id, words, yesLabel, asked) => {
       if (offered || quiet()) return;
       offered = true;
       const yes = el('button', { type: 'button', className: 'button primary', textContent: yesLabel });
@@ -274,11 +277,14 @@
         card.remove();
         open(true);
         log.querySelector('.guide-starters')?.remove();
+        const mine = { from: 'you', text: asked };
+        talk.turns.push(mine);
+        const line = show(mine);
         let turn;
         try {
           const note = await fetchNote(id);
           const text = note.kind === 'overview'
-            ? `This page in three points.\n\nThe problem: ${note.problem}\n\nWhat Martin built: ${note.built}\n\nHow it works: ${note.how}`
+            ? `The ${NAMES[project] || project} page in three points.\n\nThe problem: ${note.problem}\n\nWhat Martin built: ${note.built}\n\nHow it works: ${note.how}`
             : `“${note.heading}” in plainer words.\n\n${note.text}`;
           turn = { from: 'guide', kind: 'note', text, sources: [], further_reading: null };
         } catch {
@@ -287,6 +293,7 @@
         talk.turns.push(turn);
         show(turn);
         keep();
+        log.scrollTop = line.offsetTop - log.offsetTop - 8; // the question at the top, its answer under it
       });
       document.body.append(card);
     };
@@ -301,7 +308,7 @@
       const depth = (scrollY + innerHeight) / document.documentElement.scrollHeight;
       const soon = now - arrived < SKIM_WITHIN && depth > SKIM_DEPTH;
       const fast = scrollY - passed[0][1] > FAST * innerHeight;
-      if (soon || fast) offer(`site/${project}`, 'Skimming? I can give you this page in three short points.', 'Show me');
+      if (soon || fast) offer(`site/${project}`, 'Skimming? I can give you this page in three short points.', 'Show me', `Give me the ${NAMES[project] || project} page in three points.`);
     }, { passive: true });
 
     // Dwelling: the same part's heading has been the one in view for a while, with the reader still there.
@@ -316,7 +323,8 @@
       // Someone reading doesn't move: a minute without a movement still counts as there.
       const present = document.visibilityState === 'visible' && Date.now() - lastActive < 60_000;
       if (current && present && Date.now() - since > DWELL_FOR && Date.now() - arrived > SKIM_WITHIN) {
-        offer(`site/${project}#${current.id}`, `Want “${current.textContent.trim()}” in plainer words?`, 'Yes, explain it');
+        const heading = current.textContent.trim();
+        offer(`site/${project}#${current.id}`, `Want “${heading}” in plainer words?`, 'Yes, explain it', `Explain “${heading}” on the ${NAMES[project] || project} page in plainer words.`);
       }
     }, 2000);
   }
