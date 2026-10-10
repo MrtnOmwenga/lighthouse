@@ -42,7 +42,13 @@ export default {
       if (url.pathname === "/_guide/ask") return toGuide(request, guide, env);
       const file = GUIDE_FILES[url.pathname];
       if (!file || (request.method !== "GET" && request.method !== "HEAD")) return new Response("Not found", { status: 404 });
-      return fetch(new URL(file, origins[guide.host]), { method: request.method, cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": HOUR, "400-599": 0 } } });
+      // Asked of the site as the edge asks it anything: with the site's own secret, and none of
+      // what the visitor sent to the demo.
+      return fetch(new URL(file, origins[guide.host]), {
+        method: request.method,
+        headers: { "X-Edge-Secret": JSON.parse(env.EDGE_SECRETS)[guide.host] ?? "", "X-Forwarded-Host": guide.host, "X-Forwarded-Proto": "https" },
+        cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": HOUR, "400-599": 0 } },
+      });
     }
 
     const target = new URL(url.pathname + url.search, origin);
