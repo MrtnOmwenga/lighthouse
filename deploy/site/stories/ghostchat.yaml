@@ -8,15 +8,16 @@ problem:
   title: The problem
   paragraphs:
     - >-
-      End-to-end encryption usually promises one thing: the server can't read your messages. It says
+      The problem is privacy. Most chat apps ask you to trust their server: it can read your
+      messages, or hand them over, and you would never know. GhostChat was built to need no such
+      trust, a messenger that stays private even if its own server is breached or dishonest.
+    - >-
+      Encrypting messages is only the start of that. It stops a server reading them, and says
       nothing about whether the server can fake a message, quietly delete one, reorder a
       conversation, or swap in its own key for someone you're talking to, which is how encrypted
-      chats are usually attacked in practice.
-    - >-
-      GhostChat starts from a stricter threat model: assume the server, or whoever controls it, is
-      hostile. It may relay and store everything, but it must not be able to read, forge or
-      silently alter anything, and each of those guarantees has to be visible and checkable by the
-      people using it.
+      chats are usually attacked in practice. So GhostChat assumes the server is hostile: it may
+      relay and store everything, but it must not be able to read, forge or silently alter anything,
+      and each of those guarantees has to be visible and checkable by the people using it.
 
 solution:
   title: How it works

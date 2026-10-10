@@ -8,13 +8,15 @@ problem:
   title: The problem
   paragraphs:
     - >-
-      A portfolio of live demos has two problems. Demos go down, and a recruiter who clicks a dead
-      link doesn't come back. And a demo dropped on someone without context is half wasted: they
-      don't know what to try, or why it was hard to build.
+      The aim was to have every project live in one place, at next to no cost, with one front door
+      for someone deciding whether the work is worth their time. Live demos are expensive to keep
+      running around the clock. Left to sleep, they meet a visitor's first click with a slow or
+      broken page, and a recruiter who hits a dead link doesn't come back.
     - >-
-      Lighthouse turns both into features. It watches every project and publishes what it finds,
-      including its failures, and every launch starts with a short technical introduction while it
-      confirms the demo is up, so nobody lands on a broken page.
+      Lighthouse is the front door and the manager behind it. It is this site: the background, the
+      projects, and a way to start each one. It wakes a sleeping demo when you ask for it and tells
+      you what to look for while it starts, lets it go back to sleep afterwards, and watches every
+      project and publishes what it finds, including its failures.
 
 solution:
   title: How it works

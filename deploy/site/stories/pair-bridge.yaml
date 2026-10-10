@@ -8,13 +8,14 @@ problem:
   title: The problem
   paragraphs:
     - >-
-      Moving a file between a Linux laptop and an Android tablet on the same desk usually means a
-      cloud round trip or a cable. The cloud is slow, sees your files, and needs an account; the
-      cable is never there when you need it.
+      It started at a desk: a Linux laptop and an Android tablet used side by side, where moving a
+      file from one to the other kept getting in the way. It usually means a cloud round trip or a
+      cable. The cloud is slow, sees your files, and needs an account; the cable is never there when
+      you need it.
     - >-
-      PairBridge makes the laptop's folders feel local on the tablet: they appear in every Android
-      file picker, next to Google Drive, and any app can open, attach or save to them. Files never
-      leave the local network.
+      PairBridge makes the two feel like one workspace. The laptop's folders appear on the tablet in
+      every Android file picker, next to Google Drive, and any app can open, attach or save to them.
+      Files never leave the local network.
 
 solution:
   title: How it works

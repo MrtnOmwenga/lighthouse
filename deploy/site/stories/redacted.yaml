@@ -8,15 +8,17 @@ problem:
   title: The problem
   paragraphs:
     - >-
-      Most document editors hide things the easy way: the whole document is sent to your browser,
-      and the parts you shouldn't see are covered up. Anyone who opens the developer tools can read
-      them. Permissions are checked when you open the document, and rarely again.
+      Access control is most of what a backend does and the hardest part to show: when it works,
+      nothing happens. Redacted exists to show it. It was built to exercise role-based access
+      control, tenant isolation, sign-in and sessions, a REST API, an audit log and real-time
+      editing, and the fictional agency on top is how a visitor gets to watch them work.
     - >-
-      Redacted asks for something harder. In a multi-tenant system where documents are shared
-      between people with different clearance levels, the text you aren't cleared for should never
-      reach your browser at all, even while several people edit the same document in real time.
-      And when someone loses access, that should take effect before their next keystroke, not when
-      they next reload the page.
+      So it sets itself the hard version of the problem. Most document editors send the whole
+      document to your browser and cover up what you shouldn't see, and check permissions when you
+      open it and rarely again. Here, in a multi-tenant system where people with different clearance
+      share a document, the text you aren't cleared for must never reach your browser at all, even
+      while several people edit at once. And when someone loses access, that takes effect before
+      their next keystroke, not when they next reload the page.
 
 solution:
   title: How it works
