@@ -8,7 +8,28 @@
 // - it stores nothing unless you use it: the conversation is kept in this tab (sessionStorage) so
 //   it survives moving between pages, and is gone when the tab closes. See /privacy.
 // - the site works the same without it.
+//
+// It can also follow a visitor into a demo. The site's edge adds this script to the demo's page
+// (the demo's own code doesn't change), with `data-site` (this site's address) and `data-here`
+// (the demo's name). There it asks through /_guide/ask, and its links lead back to the site.
 (() => {
+  if (window.top !== window) return; // never inside a frame: a demo may show several of itself
+  const config = document.currentScript?.dataset ?? {};
+  const SITE = config.site || ''; // set only inside a demo
+  const HERE = config.here || '';
+  const ASK = SITE ? '/_guide/ask' : '/api/guide';
+
+  // Arriving from the site with the assistant in use: the launch page adds "#guide=…" to the
+  // demo's address, carrying the switch and the conversation. It is read once and removed.
+  const carried = /^#guide=([A-Za-z0-9_-]{2,40})$/.exec(location.hash)?.[1];
+  if (carried) {
+    try {
+      localStorage.setItem('lh_guide', '1');
+      if (carried !== 'on' && !sessionStorage.getItem('lh_guide_talk')) sessionStorage.setItem('lh_guide_talk', JSON.stringify({ id: carried, turns: [], open: true, greeted: true, carried: true }));
+    } catch { /* storage unavailable: it stays off here */ }
+    history.replaceState(history.state, '', location.pathname + location.search);
+  }
+
   // A preview: off unless switched on in this browser by opening any page with ?guide=on.
   const params = new URLSearchParams(location.search);
   if (params.has('guide')) {
@@ -20,6 +41,7 @@
   let on = false;
   try { on = localStorage.getItem('lh_guide') === '1'; } catch { /* stays off */ }
   if (!on) return;
+  if (config.css) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: config.css }));
 
   const STORIES = { lighthouse: '/projects/lighthouse', redacted: '/projects/redacted', ghostchat: '/projects/ghostchat', 'pair-bridge': '/projects/pair-bridge', background: '/about' };
   const NAMES = { lighthouse: 'Lighthouse', redacted: 'Redacted', ghostchat: 'GhostChat', 'offline-driver': 'offline-driver', 'living-docs': 'living-docs', 'pair-bridge': 'Pairbridge', background: 'About Martin' };
@@ -45,7 +67,7 @@
   const send = el('button', { type: 'submit', className: 'button primary', textContent: 'Ask' });
   const form = el('form', { className: 'guide-form' }, input, send);
   const close = el('button', { type: 'button', className: 'guide-close', textContent: 'Close' });
-  const note = el('p', { className: 'guide-note' }, 'An AI. It answers from Martin’s own notes and code, and says where from. Questions are kept for 90 days. ', el('a', { href: '/privacy#assistant', textContent: 'Privacy' }));
+  const note = el('p', { className: 'guide-note' }, 'An AI. It answers from Martin’s own notes and code, and says where from. Questions are kept for 90 days. ', el('a', { href: `${SITE}/privacy#assistant`, textContent: 'Privacy' }));
   const panel = el('section', { className: 'guide-panel', hidden: true },
     el('header', {}, el('div', {}, el('strong', { textContent: 'Martin’s assistant' }), el('span', { textContent: 'An AI that knows his work closely' })), close),
     log, form, note);
@@ -73,6 +95,7 @@
   // Going to a place: on this page it is pointed at; on another, the page is opened and points at
   // it on arrival, with this window still open and the conversation in it.
   const go = (route) => {
+    if (SITE) return false; // in a demo, places are on the site: a link there, never a jump
     const [path, id] = route.split('#');
     if (path === location.pathname) {
       history.replaceState(history.state, '', route);
@@ -83,8 +106,9 @@
     return false;
   };
   const place = (route, label) => {
-    const link = el('a', { href: route, className: 'guide-place', textContent: label });
-    link.addEventListener('click', (e) => { if (go(route)) e.preventDefault(); });
+    const link = el('a', { href: SITE + route, className: 'guide-place', textContent: label });
+    if (SITE) Object.assign(link, { target: '_blank', rel: 'noopener' }); // the demo stays open
+    else link.addEventListener('click', (e) => { if (go(route)) e.preventDefault(); });
     return link;
   };
   try {
@@ -108,7 +132,7 @@
     if (next && typeof next.route === 'string' && PLACE.test(next.route)) {
       item.append(el('p', { className: 'guide-next' }, 'Read more: ', place(next.route, `${NAMES[next.project] || next.project} · ${next.heading}`)));
     } else if (next && STORIES[next.project]) {
-      item.append(el('p', { className: 'guide-next' }, 'Read more: ', el('a', { href: STORIES[next.project], textContent: next.project === 'background' ? 'About Martin' : `the ${NAMES[next.project]} story` })));
+      item.append(el('p', { className: 'guide-next' }, 'Read more: ', el('a', { href: SITE + STORIES[next.project], textContent: next.project === 'background' ? 'About Martin' : `the ${NAMES[next.project]} story` })));
     }
     // An offer of the CV or a way to write. The addresses are this page's own links, found on the
     // page: the service only ever says which of the two to offer.
@@ -125,8 +149,13 @@
   };
 
   const starters = () => {
-    const box = el('div', { className: 'guide-starters' }, el('p', { textContent: 'I’m Martin’s assistant: an AI that knows his projects, his code and his background closely. Ask me anything about them, or start here.' }));
-    for (const q of STARTERS) {
+    const words = talk.carried
+      ? `I’ve come along from Martin’s site, and I still have our conversation. Ask me about anything you see here in ${HERE || 'the demo'}.`
+      : SITE
+        ? `I’m Martin’s assistant: an AI that knows how ${HERE || 'this demo'} is built. Ask me about anything you see here.`
+        : 'I’m Martin’s assistant: an AI that knows his projects, his code and his background closely. Ask me anything about them, or start here.';
+    const box = el('div', { className: 'guide-starters' }, el('p', { textContent: words }));
+    for (const q of SITE ? [] : STARTERS) {
       const b = el('button', { type: 'button', className: 'guide-starter', textContent: q });
       b.addEventListener('click', () => ask(q));
       box.append(b);
@@ -149,9 +178,9 @@
     const tick = setInterval(() => { step = Math.min(step + 1, WAITING.length - 1); waiting.firstChild.textContent = WAITING[step]; }, 2200);
     let reply;
     try {
-      const res = await fetch('/api/guide', {
+      const res = await fetch(ASK, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
-        body: JSON.stringify({ message: question, ...(talk.id ? { conversation: talk.id } : {}) }),
+        body: JSON.stringify({ message: question, ...(talk.id ? { conversation: talk.id } : {}), ...(config.viewing ? { viewing: config.viewing } : {}) }),
       });
       reply = await res.json();
       if (!res.ok || typeof reply.text !== 'string') throw new Error('no reply');
@@ -167,7 +196,7 @@
     keep();
     // An answer takes the reader to where it comes from: the first of its sources that is a place
     // on this site. Not on a narrow screen, where this window would have to close to show it.
-    const lead = turn.kind === 'answer' && innerWidth > 560 && turn.sources.find((s) => typeof s.route === 'string' && PLACE.test(s.route));
+    const lead = !SITE && turn.kind === 'answer' && innerWidth > 560 && turn.sources.find((s) => typeof s.route === 'string' && PLACE.test(s.route));
     if (lead && !go(lead.route)) location.assign(lead.route);
     busy = false;
     send.disabled = false;
@@ -196,6 +225,24 @@
 
   document.body.append(launcher, panel);
   if (talk.open) open(true);
+  if (SITE) return; // what follows is about this site's own pages
+
+  // Going from a launch page into a demo the assistant can follow into: the demo's address
+  // carries the switch, and the conversation if there is one. A demo it doesn't follow into says
+  // why, once, in this window.
+  const launch = document.querySelector('[data-launch]');
+  if (launch?.hasAttribute('data-guide-follows')) {
+    const carry = (url) => `${url.split('#')[0]}#guide=${talk.id || 'on'}`;
+    window.lighthouseGuide = { carry };
+    for (const a of document.querySelectorAll('a[data-open], a[data-tour-link]')) a.addEventListener('click', () => { a.href = carry(a.href); });
+  }
+  const absent = launch?.dataset.guideAbsent;
+  if (absent && !talk.turns.some((t) => t.text === absent)) {
+    const turn = { from: 'guide', kind: 'note', text: absent, sources: [], further_reading: null };
+    talk.turns.push(turn);
+    keep();
+    if (!panel.hidden) { log.querySelector('.guide-starters')?.remove(); show(turn); }
+  }
 
   // Unasked offers, on a project's page. Two readers are worth interrupting, once, gently:
   // one who is skimming (most of the page gone by in the first half minute) is offered the page in

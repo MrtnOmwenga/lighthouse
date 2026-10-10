@@ -88,9 +88,19 @@ func TestTheGuideShipsWithItsPrivacyNotice(t *testing.T) {
 	if !strings.Contains(front, `/static/guide.js?v=`) {
 		t.Fatal("the guide's script isn't on the page")
 	}
+	// Its styles are loaded by the script, only once the assistant is on.
+	if !strings.Contains(front, `data-css="/static/guide.css?v=`) || strings.Contains(b.expect(200, "GET", "/static/style.css", nil), ".guide-panel") {
+		t.Error("the guide's styles should be a file of their own, named to the script")
+	}
+	if css := b.expect(200, "GET", "/static/guide.css", nil); !strings.Contains(css, ".guide-panel") || !strings.Contains(css, "--claret") {
+		t.Error("guide.css should carry the window's styles and the colours it needs away from the site")
+	}
+	if !strings.Contains(privacy, "it comes with you") || !strings.Contains(privacy, "not added to GhostChat") {
+		t.Error("the privacy page doesn't say the assistant follows into Redacted and stays out of GhostChat")
+	}
 	script := b.expect(200, "GET", "/static/guide.js", nil)
 	// It is inert unless switched on, sends no cookies, and never writes a reply as markup.
-	for _, want := range []string{"localStorage.getItem('lh_guide') === '1'", "credentials: 'omit'", "textContent"} {
+	for _, want := range []string{"localStorage.getItem('lh_guide') === '1'", "credentials: 'omit'", "textContent", "window.top !== window"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("guide.js: missing %q", want)
 		}
