@@ -3,7 +3,7 @@
 The AI assistant on the site: it answers questions about the projects and their author from a
 fixed body of material, says where each answer comes from, and can take a reader to the part of
 the site it is talking about. Python, AWS Lambda and DynamoDB, Claude Haiku through Anthropic's
-API. About 2,600 lines.
+API. About 2,900 lines, a quarter of it infrastructure code.
 
 Source: the `docent` repository, which is private for now (its background pages name an employer
 and clients). File paths on these pages are in that repository. The window visitors see is in
