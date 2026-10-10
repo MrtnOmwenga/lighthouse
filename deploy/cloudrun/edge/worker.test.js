@@ -204,7 +204,8 @@ test("the assistant follows a visitor into a demo: its files come from the site,
   assert.equal(await script.text(), "// the script");
   assert.equal(calls[0].url, "https://site.run.app/static/guide.js"); // the site's copy, not the demo's
   assert.equal(calls[0].headers.get("Cookie"), null);
-  assert.equal(calls[0].headers.get("X-Edge-Secret"), null);
+  assert.equal(calls[0].headers.get("X-Edge-Secret"), "s3cret"); // the site's secret, or the site would refuse the edge
+  assert.equal(calls[0].headers.get("X-Forwarded-Host"), "site.example");
   await worker.fetch(new Request("https://demo.site.example/_guide/guide.css"), env, ctx);
   assert.equal(calls[1].url, "https://site.run.app/static/guide.css");
   for (const path of ["/_guide/../static/style.css", "/_guide/other.js", "/_guide/"]) {
