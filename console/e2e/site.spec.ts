@@ -428,3 +428,57 @@ test('a demo that is slow to wake is called delayed, and only then offered unope
   await expect(page.getByRole('heading', { name: 'Ready when you are' })).toBeHidden();
 });
 
+
+// Accessibility, checked by machine (axe) where a machine can: names, roles, contrast, focus order.
+// The assistant's window and the diagrams are the parts added last and the most interactive.
+test.describe('accessibility', () => {
+  const check = async (page: import('@playwright/test').Page, include?: string) => {
+    const { default: AxeBuilder } = await import('@axe-core/playwright');
+    let axe = new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']);
+    if (include) axe = axe.include(include);
+    const { violations } = await axe.analyze();
+    expect(violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length}) ${v.nodes[0]?.target} ${v.nodes[0]?.failureSummary ?? ""}`)).toEqual([]);
+  };
+
+  test('the assistant\'s window, open and with an answer in it', async ({ page }) => {
+    await page.route('**/api/guide', (route) => route.fulfill({ json: {
+      conversation: 'a'.repeat(24), kind: 'answer', text: 'Six decisions shaped it.', offer: 'cv',
+      sources: [{ id: 'site/redacted#decisions', project: 'redacted', page: 'Redacted', heading: 'Key decisions', route: '/about#x' }], further_reading: null,
+    } }));
+    await page.goto('/about?guide=on');
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await check(page, '.guide-panel');
+    await panel.getByLabel('Your question').fill('What were the key decisions?');
+    await panel.getByLabel('Your question').press('Enter');
+    await expect(panel).toContainText('Six decisions shaped it.');
+    await check(page, '.guide-panel');
+    // Usable by keyboard alone: Escape closes it and gives the focus back to what opened it.
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toBeFocused();
+  });
+
+  test('a diagram: at rest, with a part chosen, and mid walk-through, wide and narrow', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/projects/redacted/architecture');
+      await check(page, 'main');
+      await page.locator('#part-realtime').click();
+      await check(page, '.arch-stage');
+      await page.locator('#arch-now').getByRole('button', { name: 'Next', exact: true }).click();
+      await check(page, '.arch-stage');
+    }
+  });
+
+  test('the launch page, waiting and ready', async ({ page }) => {
+    let up = false;
+    await page.route('**/api/projects/redacted/ready', (route) => route.fulfill({ json: { ready: up } }));
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/go/redacted');
+    await check(page, 'main');
+    up = true;
+    await expect(page.locator('.developing').getByRole('button')).toHaveText('Open Redacted →', { timeout: 10_000 });
+    await check(page);
+  });
+});
