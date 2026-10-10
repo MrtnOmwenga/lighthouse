@@ -24,14 +24,16 @@ test.describe('the guide', () => {
     further_reading: { id: 'redacted/05-redaction#how', project: 'redacted', page: 'Sections', heading: 'How are words hidden?' },
   };
 
-  test('is absent until switched on in this browser, and the switch leaves the address clean', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toHaveCount(0);
-    await page.goto('/?guide=on');
-    await expect(page).toHaveURL(/\/$/);
+  test('is there for every visitor, and can be switched off in a browser, which remembers', async ({ page }) => {
+    await page.goto('/about');
     await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toBeVisible();
     await page.goto('/about?guide=off');
+    await expect(page).toHaveURL(/\/about$/); // the switch leaves the address clean
     await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toHaveCount(0);
+    await page.goto('/projects');
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toHaveCount(0);
+    await page.goto('/projects?guide=on');
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toBeVisible();
   });
 
   test('offers itself once on the front page, answers with its sources, and shows replies as text only', async ({ page }) => {

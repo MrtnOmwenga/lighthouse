@@ -99,8 +99,9 @@ func TestTheGuideShipsWithItsPrivacyNotice(t *testing.T) {
 		t.Error("the privacy page doesn't say the assistant follows into Redacted and stays out of GhostChat")
 	}
 	script := b.expect(200, "GET", "/static/guide.js", nil)
-	// It is inert unless switched on, sends no cookies, and never writes a reply as markup.
-	for _, want := range []string{"localStorage.getItem('lh_guide') === '1'", "credentials: 'omit'", "textContent", "window.top !== window"} {
+	// It can be switched off in a browser, appears in a demo only when carried there, sends no
+	// cookies, and never writes a reply as markup.
+	for _, want := range []string{"localStorage.getItem('lh_guide') !== '0'", "localStorage.getItem('lh_guide') === '1'", "credentials: 'omit'", "textContent", "window.top !== window"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("guide.js: missing %q", want)
 		}
