@@ -106,6 +106,25 @@ test.describe('the guide', () => {
     await expect(page.locator('#limits')).toHaveClass(/guide-point/);
   });
 
+  test('a reader who races down a page long after arriving is offered it too; a slow one is left alone', async ({ page }) => {
+    await page.clock.install();
+    await page.goto('/projects/lighthouse?guide=on');
+    await page.clock.fastForward('02:00'); // long past "soon after arriving"
+    const offer = page.getByRole('complementary', { name: 'An offer from Martin’s assistant' });
+    // One screen at a time, with a pause between: reading, not skimming.
+    for (let i = 1; i <= 2; i += 1) {
+      await page.evaluate((n) => window.scrollTo(0, n * innerHeight), i);
+      await page.clock.fastForward('00:08');
+    }
+    await expect(offer).toHaveCount(0);
+    // Three screens in a moment.
+    for (let i = 0; i < 4; i += 1) {
+      await page.evaluate(() => window.scrollTo(0, scrollY + innerHeight));
+      await page.clock.runFor(200);
+    }
+    await expect(offer).toContainText('Skimming?');
+  });
+
   test('offers the page in three points to a reader who is skimming, once, and takes no for an answer', async ({ page }) => {
     const asked: unknown[] = [];
     await page.route('**/api/guide', async (route) => {

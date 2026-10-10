@@ -245,7 +245,7 @@
   }
 
   // Unasked offers, on a project's page. Two readers are worth interrupting, once, gently:
-  // one who is skimming (most of the page gone by in the first half minute) is offered the page in
+  // one who is skimming (well down the page soon after arriving, or scrolling fast) is offered the page in
   // three points; one who has stayed on a part is offered that part in plainer words. What is shown
   // was written ahead of time and comes back without any model being asked.
   // One offer a page, none after a "no" in this tab, none while the window is open or someone is typing.
@@ -254,7 +254,7 @@
   if (project && !talk.noOffers && 'IntersectionObserver' in window) {
     const arrived = Date.now();
     let offered = false;
-    const SKIM_WITHIN = 30_000, SKIM_DEPTH = 0.7, DWELL_FOR = 35_000;
+    const SKIM_WITHIN = 45_000, SKIM_DEPTH = 0.6, FAST = 2.5, DWELL_FOR = 25_000;
 
     const fetchNote = async (id) => {
       const res = await fetch('/api/guide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', body: JSON.stringify({ note: id }) });
@@ -291,10 +291,17 @@
       document.body.append(card);
     };
 
-    // Skimming: far down the page soon after arriving.
+    // Skimming: well down the page soon after arriving, or more than two and a half screens
+    // gone by in five seconds at any time.
+    const passed = []; // [when, where] of recent scrolls
     addEventListener('scroll', () => {
+      const now = Date.now();
+      passed.push([now, scrollY]);
+      while (now - passed[0][0] > 5000) passed.shift();
       const depth = (scrollY + innerHeight) / document.documentElement.scrollHeight;
-      if (Date.now() - arrived < SKIM_WITHIN && depth > SKIM_DEPTH) offer(`site/${project}`, 'Skimming? I can give you this page in three short points.', 'Show me');
+      const soon = now - arrived < SKIM_WITHIN && depth > SKIM_DEPTH;
+      const fast = scrollY - passed[0][1] > FAST * innerHeight;
+      if (soon || fast) offer(`site/${project}`, 'Skimming? I can give you this page in three short points.', 'Show me');
     }, { passive: true });
 
     // Dwelling: the same part's heading has been the one in view for a while, with the reader still there.
@@ -306,7 +313,8 @@
     }, { rootMargin: '0px 0px -55% 0px' });
     parts.forEach((p) => watch.observe(p));
     setInterval(() => {
-      const present = document.visibilityState === 'visible' && Date.now() - lastActive < 20_000;
+      // Someone reading doesn't move: a minute without a movement still counts as there.
+      const present = document.visibilityState === 'visible' && Date.now() - lastActive < 60_000;
       if (current && present && Date.now() - since > DWELL_FOR && Date.now() - arrived > SKIM_WITHIN) {
         offer(`site/${project}#${current.id}`, `Want “${current.textContent.trim()}” in plainer words?`, 'Yes, explain it');
       }
