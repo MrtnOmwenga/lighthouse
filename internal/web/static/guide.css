@@ -25,6 +25,7 @@
 .guide-panel header span { font-size: 13px; color: var(--muted); }
 .guide-close { min-height: 40px; padding: 6px 12px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: 600 14px/1 var(--sans); cursor: pointer; }
 .guide-close:hover { border-color: var(--ink); }
+.guide-head-buttons { display: flex; gap: 6px; }
 .guide-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .guide-turn { max-width: 92%; }
 .guide-turn p { white-space: pre-wrap; overflow-wrap: anywhere; }

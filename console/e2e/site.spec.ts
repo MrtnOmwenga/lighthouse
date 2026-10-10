@@ -36,6 +36,36 @@ test.describe('the guide', () => {
     await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toBeVisible();
   });
 
+  test('a new conversation starts from nothing: the old one is no longer sent', async ({ page }) => {
+    const asked: Array<{ conversation?: string }> = [];
+    await page.route('**/api/guide', async (route) => {
+      asked.push(route.request().postDataJSON());
+      await route.fulfill({ json: { conversation: asked.length === 1 ? 'a'.repeat(24) : 'b'.repeat(24), kind: 'answer', text: `Reply ${asked.length}.`, sources: [], further_reading: null } });
+    });
+    await page.goto('/about');
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    const question = panel.getByLabel('Your question');
+    await question.fill('First question');
+    await question.press('Enter');
+    await expect(panel).toContainText('Reply 1.');
+    await question.fill('A follow-up');
+    await question.press('Enter');
+    await expect(panel).toContainText('Reply 2.');
+    expect(asked[1].conversation).toBe('a'.repeat(24));
+
+    await panel.getByRole('button', { name: 'Start a new conversation' }).click();
+    await expect(panel).not.toContainText('Reply 1.');
+    await expect(panel).toContainText('Ask me anything about them'); // back to the opening words
+    await question.fill('Something else');
+    await question.press('Enter');
+    await expect(panel).toContainText('Reply 3.');
+    expect(asked[2].conversation).toBeUndefined();
+    // And it stays new on the next page.
+    await page.goto('/projects');
+    await expect(page.getByRole('dialog', { name: 'Martin’s assistant' })).not.toContainText('Reply 1.');
+  });
+
   test('offers itself once on the front page, answers with its sources, and shows replies as text only', async ({ page }) => {
     const asked: unknown[] = [];
     await page.route('**/api/guide', async (route) => {

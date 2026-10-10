@@ -47,7 +47,7 @@
   if (config.css) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: config.css }));
 
   const STORIES = { lighthouse: '/projects/lighthouse', redacted: '/projects/redacted', ghostchat: '/projects/ghostchat', 'pair-bridge': '/projects/pair-bridge', background: '/about' };
-  const NAMES = { lighthouse: 'Lighthouse', redacted: 'Redacted', ghostchat: 'GhostChat', 'offline-driver': 'offline-driver', 'living-docs': 'living-docs', 'pair-bridge': 'Pairbridge', background: 'About Martin' };
+  const NAMES = { lighthouse: 'Lighthouse', redacted: 'Redacted', ghostchat: 'GhostChat', 'offline-driver': 'offline-driver', 'living-docs': 'living-docs', 'pair-bridge': 'Pairbridge', docent: 'The assistant', background: 'About Martin' };
   const STARTERS = ['What is Martin strongest at?', 'What has he built, and which project should I look at first?', 'How does Redacted keep classified text from readers without clearance?'];
   const WAITING = ['Looking through the handbook…', 'Reading the relevant sections…', 'Checking it against the sources…', 'Writing it up…'];
   const KEY = 'lh_guide_talk';
@@ -70,9 +70,13 @@
   const send = el('button', { type: 'submit', className: 'button primary', textContent: 'Ask' });
   const form = el('form', { className: 'guide-form' }, input, send);
   const close = el('button', { type: 'button', className: 'guide-close', textContent: 'Close' });
+  // Starts again from nothing: the service keeps the old conversation for its 90 days, but this
+  // window forgets its reference to it, so the next question begins a new one.
+  const fresh = el('button', { type: 'button', className: 'guide-close', textContent: 'New' });
+  fresh.setAttribute('aria-label', 'Start a new conversation');
   const note = el('p', { className: 'guide-note' }, 'An AI. It answers from Martin’s own notes and code, and says where from. Questions are kept for 90 days. ', el('a', { href: `${SITE}/privacy#assistant`, textContent: 'Privacy' }));
   const panel = el('section', { className: 'guide-panel', hidden: true },
-    el('header', {}, el('div', {}, el('strong', { textContent: 'Martin’s assistant' }), el('span', { textContent: 'An AI that knows his work closely' })), close),
+    el('header', {}, el('div', {}, el('strong', { textContent: 'Martin’s assistant' }), el('span', { textContent: 'An AI that knows his work closely' })), el('div', { className: 'guide-head-buttons' }, fresh, close)),
     log, form, note);
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Martin’s assistant');
@@ -223,6 +227,16 @@
 
   form.addEventListener('submit', (e) => { e.preventDefault(); ask(input.value); });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(input.value); } });
+  fresh.addEventListener('click', () => {
+    if (busy) return;
+    talk.id = null;
+    talk.turns = [];
+    talk.carried = false;
+    keep();
+    log.replaceChildren();
+    starters();
+    input.focus();
+  });
   launcher.addEventListener('click', () => open(true));
   close.addEventListener('click', () => open(false));
   panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') open(false); });
