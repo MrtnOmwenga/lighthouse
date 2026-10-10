@@ -55,7 +55,13 @@ resource "cloudflare_workers_script" "edge" {
     {
       type = "plain_text"
       name = "GUIDE" # the site's assistant, a separate service: its one path is sent there
-      text = var.guide_origin == "" ? "null" : jsonencode({ host = local.hosts.lighthouse, path = "/api/guide", origin = var.guide_origin })
+      text = var.guide_origin == "" ? "null" : jsonencode({
+        host   = local.hosts.lighthouse
+        path   = "/api/guide"
+        origin = var.guide_origin
+        # Demos it follows a visitor into, and the handbook section that says what they are looking at.
+        demos = { (local.hosts.redacted) = { name = "Redacted", viewing = "redacted/07-demo#what-does-a-visitor-see" } }
+      })
     },
     {
       type = "plain_text"

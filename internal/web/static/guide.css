@@ -1,0 +1,61 @@
+/* The assistant's window, loaded by guide.js only when the assistant is on. It is also used inside
+   a demo, which has none of the site's styles, so it brings what it needs with it: the colours,
+   and the few shared classes (.button, .label) as they look on the site. */
+.guide-launcher, .guide-panel, .guide-hello {
+  --paper: #FAEEE3; --panel: #F4E0D0; --ink: #1E1B18; --ink-2: #3A332D; --muted: #5C534B; --rule: #DCCBBA; --claret: #93203A; --claret-light: #E8A5B0;
+  --serif: "Newsreader", Georgia, "Times New Roman", serif; --sans: "Plex Condensed", "Arial Narrow", system-ui, sans-serif;
+  box-sizing: border-box; color: var(--ink); font: 16px/1.5 var(--serif); text-align: left; letter-spacing: normal;
+}
+.guide-panel *, .guide-hello * { box-sizing: border-box; }
+.guide-panel p, .guide-hello p { margin: 0; }
+.guide-panel a, .guide-hello a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.guide-panel .button, .guide-hello .button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 18px; border: 1px solid var(--ink); background: transparent; color: var(--ink); font: 600 16px/1.2 var(--sans); text-decoration: none; cursor: pointer; }
+.guide-panel .button:hover, .guide-hello .button:hover { background: var(--ink); color: var(--paper); }
+.guide-panel .button.primary, .guide-hello .button.primary { background: var(--claret); border-color: var(--claret); color: #fff; }
+.guide-panel .label { font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* The guide: the assistant's window. A launcher, a panel that opens from it, and one offer on the
+   front page. Paper and ink like the rest; nothing moves for readers who asked for less motion. */
+.guide-launcher { position: fixed; right: 20px; bottom: 20px; z-index: 40; min-height: 48px; padding: 10px 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); font: 600 16px/1.2 var(--sans); cursor: pointer; box-shadow: 0 6px 20px rgba(30, 27, 24, 0.25); }
+.guide-launcher:hover { background: var(--claret); border-color: var(--claret); }
+.guide-panel { position: fixed; right: 20px; bottom: 20px; z-index: 41; display: flex; flex-direction: column; width: min(420px, calc(100vw - 40px)); height: min(620px, calc(100dvh - 40px)); background: var(--paper); border: 1px solid var(--ink); border-top: 4px solid var(--claret); box-shadow: 0 12px 40px rgba(30, 27, 24, 0.3); font-family: var(--sans); font-size: 16px; line-height: 1.45; }
+.guide-panel[hidden], .guide-launcher[hidden] { display: none; }
+.guide-panel header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+.guide-panel header strong { display: block; font-family: var(--serif); font-size: 20px; line-height: 1.1; }
+.guide-panel header span { font-size: 13px; color: var(--muted); }
+.guide-close { min-height: 40px; padding: 6px 12px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: 600 14px/1 var(--sans); cursor: pointer; }
+.guide-close:hover { border-color: var(--ink); }
+.guide-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.guide-turn { max-width: 92%; }
+.guide-turn p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.guide-turn.you { align-self: flex-end; background: var(--ink); color: var(--paper); padding: 8px 12px; }
+.guide-turn.guide { align-self: flex-start; background: var(--panel); padding: 10px 12px; border-left: 3px solid var(--claret); }
+.guide-turn.decline, .guide-turn.limit, .guide-turn.clarify { border-left-color: var(--muted); }
+.guide-turn.waiting { color: var(--muted); font-style: italic; border-left-color: var(--rule); }
+.guide-turn .label { margin-top: 10px; font-size: 11px; color: var(--muted); }
+.guide-sources { margin: 4px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--ink-2); }
+.guide-sources li { padding: 2px 0; }
+.guide-next { margin-top: 8px; font-size: 15px; }
+.guide-starters { display: flex; flex-direction: column; gap: 8px; }
+.guide-starter { text-align: left; min-height: 44px; padding: 8px 12px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: 500 15px/1.3 var(--sans); cursor: pointer; }
+.guide-starter:hover { border-color: var(--claret); color: var(--claret); }
+.guide-form { display: flex; gap: 8px; padding: 10px 14px 6px; border-top: 1px solid var(--rule); }
+.guide-form textarea { flex: 1; min-height: 44px; resize: none; padding: 8px 10px; border: 1px solid var(--ink); background: #fff; color: var(--ink); font: 16px/1.35 var(--sans); }
+.guide-form .button[disabled] { opacity: 0.5; cursor: default; }
+.guide-note { padding: 0 14px 10px; font-size: 12px; color: var(--muted); }
+.guide-hello { position: fixed; right: 20px; bottom: 84px; z-index: 40; width: min(340px, calc(100vw - 40px)); padding: 14px 16px; background: var(--paper); border: 1px solid var(--ink); border-top: 4px solid var(--claret); box-shadow: 0 10px 30px rgba(30, 27, 24, 0.25); font-family: var(--sans); font-size: 16px; line-height: 1.4; }
+.guide-hello-actions { display: flex; gap: 8px; margin-top: 10px; }
+@media (max-width: 560px) {
+  .guide-panel { right: 0; bottom: 0; width: 100vw; height: min(80dvh, 620px); border-left: none; border-right: none; border-bottom: none; }
+  .guide-launcher { right: 12px; bottom: 12px; }
+  .guide-hello { right: 12px; bottom: 72px; }
+}
+@media print { .guide-launcher, .guide-panel, .guide-hello { display: none; } }
+
+/* Where the guide is pointing: the heading it took the reader to, marked for a few seconds. */
+.guide-place { color: var(--claret); }
+.guide-point { scroll-margin-top: 24px; background: linear-gradient(90deg, var(--claret-light), transparent 85%); box-shadow: -8px 0 0 var(--claret); transition: background 0.6s; }
+@media (prefers-reduced-motion: reduce) { .guide-point { transition: none; } }
+
+.guide-turn.note { border-left-color: var(--ink); }
+.guide-next .button { min-height: 40px; padding: 8px 14px; font-size: 15px; }

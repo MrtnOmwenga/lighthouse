@@ -31,8 +31,19 @@ export default {
     // The site's assistant is a separate service (on AWS). Its one path is sent there, with that
     // service's own secret and the visitor's address, and nothing else of the request: no cookies,
     // so a signed-in session never leaves this site.
+    // It can follow a visitor into a demo (guide.demos, by host). The demo's own code doesn't
+    // change: its page leaves here with one script tag added (see withGuide), the script and its
+    // styles are served from this site under /_guide/, and questions go to /_guide/ask. To the
+    // demo's content security policy all of that is the demo's own origin.
     const guide = JSON.parse(env.GUIDE ?? "null");
     if (guide && url.hostname === guide.host && url.pathname === guide.path) return toGuide(request, guide, env);
+    const demo = guide?.demos?.[url.hostname]; // { name, viewing }
+    if (demo && url.pathname.startsWith("/_guide/")) {
+      if (url.pathname === "/_guide/ask") return toGuide(request, guide, env);
+      const file = GUIDE_FILES[url.pathname];
+      if (!file || (request.method !== "GET" && request.method !== "HEAD")) return new Response("Not found", { status: 404 });
+      return fetch(new URL(file, origins[guide.host]), { method: request.method, cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": HOUR, "400-599": 0 } } });
+    }
 
     const target = new URL(url.pathname + url.search, origin);
     const headers = new Headers(request.headers);
@@ -61,7 +72,8 @@ export default {
       const ttl = url.searchParams.has("v") || url.pathname.includes("/fonts/") ? YEAR : HOUR;
       return toOrigin({ cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": ttl, "400-599": 0 } } });
     }
-    return asSent(await toOrigin());
+    const answer = await toOrigin();
+    return asSent(demo && request.method === "GET" ? withGuide(answer, guide, demo) : answer);
   },
 
   // The scheduled calls. One failing doesn't stop the others; a failure is logged and the next
@@ -84,15 +96,29 @@ export default {
 
 const GUIDE_MAX_BYTES = 8_000;
 
+// A demo's page, with the assistant's script added at the end of its body. The script does nothing
+// unless the visitor has the assistant switched on, and never runs inside a frame.
+function withGuide(response, guide, demo) {
+  if (!(response.headers.get("Content-Type") ?? "").startsWith("text/html") || typeof HTMLRewriter === "undefined") return response;
+  const attr = (v) => String(v ?? "").replace(/[^A-Za-z0-9 ./#:-]/g, "");
+  const tag = `<script src="/_guide/guide.js" data-css="/_guide/guide.css" data-site="https://${attr(guide.host)}" data-here="${attr(demo.name)}" data-viewing="${attr(demo.viewing)}" defer></script>`;
+  return new HTMLRewriter().on("body", { element(body) { body.append(tag, { html: true }); } }).transform(response);
+}
+
+const GUIDE_FILES = { "/_guide/guide.js": "/static/guide.js", "/_guide/guide.css": "/static/guide.css" };
+const RESTING = { kind: "limit", limit: "unavailable", text: "I can't answer right now. The project pages have everything I'd draw on.", sources: [], further_reading: null };
+
 async function toGuide(request, guide, env) {
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   if (request.method !== "POST") return json(405, { error: "POST only" });
   // Only this site's own pages may ask: a browser on another site sends that site's Origin.
-  if (request.headers.get("Origin") !== `https://${guide.host}`) return json(403, { error: "not from this site" });
+  // (The path was matched on one of the assistant's hosts, so that host's own pages are the ones meant.)
+  if (request.headers.get("Origin") !== `https://${new URL(request.url).hostname}`) return json(403, { error: "not from this site" });
   const body = await request.text();
   if (body.length > GUIDE_MAX_BYTES) return json(413, { error: "too large" });
   try {
-    const answer = await fetch(new URL(guide.path, guide.origin), {
+    // The service's address may carry a path of its own (an API Gateway stage), which is kept.
+    const answer = await fetch(guide.origin.replace(/\/+$/, "") + guide.path, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -101,10 +127,13 @@ async function toGuide(request, guide, env) {
       },
       body,
     });
+    // Switched off, throttled, blocked by its firewall or failing: to the visitor it is resting.
+    // (A 4xx is the service's own verdict on the request, and is passed on.)
+    if (answer.status === 429 || answer.status === 403 || answer.status >= 500) return json(200, RESTING);
     return json(answer.status, await answer.json());
   } catch {
     // The assistant being away must never look like the site being broken.
-    return json(200, { kind: "limit", limit: "unavailable", text: "I can't answer right now. The project pages have everything I'd draw on.", sources: [], further_reading: null });
+    return json(200, RESTING);
   }
 }
 

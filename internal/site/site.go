@@ -115,6 +115,10 @@ type Project struct {
 	Facts      []Fact    `yaml:"facts"`
 	Repo       string    `yaml:"repo"`
 	Docs       string    `yaml:"docs"` // design notes
+	// GuideFollows: the site's assistant can follow a visitor into this demo (the edge adds its
+	// script there). GuideAbsent says, in the assistant's own voice, why it doesn't.
+	GuideFollows bool   `yaml:"guide_follows"`
+	GuideAbsent  string `yaml:"guide_absent"`
 	// ArchitectureDraft keeps the project's architecture page out of the story, the sitemap and
 	// search engines until it has been read through. The page itself still answers.
 	ArchitectureDraft bool `yaml:"architecture_draft"`

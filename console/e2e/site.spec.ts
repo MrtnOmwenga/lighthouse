@@ -163,6 +163,70 @@ test.describe('the guide', () => {
   });
 });
 
+// The assistant across the demos: it follows a visitor into Redacted, and says why it stays out of
+// GhostChat.
+test.describe('the guide and the demos', () => {
+  test('a launch page hands the demo the switch and the conversation; GhostChat\'s says why it gets neither', async ({ page }) => {
+    await page.route('**/api/projects/redacted/ready', (route) => route.fulfill({ json: { ready: true } }));
+    await page.route('**/api/guide', (route) => route.fulfill({ json: { conversation: 'c'.repeat(24), kind: 'answer', text: 'It is a demo of access control.', sources: [], further_reading: null } }));
+    await page.goto('/go/redacted?guide=on');
+    const open = page.locator('.live-band').getByRole('link', { name: 'Open Redacted →' });
+    await expect(open).toBeVisible();
+    const demo = await page.locator('[data-launch]').getAttribute('data-demo');
+    await page.route(`${demo}/**`, (route) => route.fulfill({ contentType: 'text/html', body: '<title>the demo</title>' }));
+
+    await page.getByRole('button', { name: 'Ask Martin’s assistant' }).click();
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await panel.getByLabel('Your question').fill('What is Redacted?');
+    await panel.getByLabel('Your question').press('Enter');
+    await expect(panel).toContainText('It is a demo of access control.');
+    await open.click();
+    await expect(page).toHaveURL(`${demo}/#guide=${'c'.repeat(24)}`);
+
+    await page.goto('/go/ghostchat');
+    await expect(page.getByRole('dialog', { name: 'Martin’s assistant' })).toContainText('I don\'t follow you into GhostChat, and that is on purpose.');
+    await expect(page.locator('[data-launch]')).not.toHaveAttribute('data-guide-follows', /.*/);
+  });
+
+  test('inside a demo it carries the conversation on, asks through the demo\'s own address, and links back to the site', async ({ page, baseURL }) => {
+    const asked: unknown[] = [];
+    await page.route('http://demo.test/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/_guide/ask') {
+        asked.push(route.request().postDataJSON());
+        return route.fulfill({ json: {
+          conversation: 'c'.repeat(24), kind: 'answer', text: 'The bars are sent in place of the text.',
+          sources: [{ id: 'site/redacted#solution', project: 'redacted', page: 'Redacted', heading: 'How it works', route: '/projects/redacted#solution' }], further_reading: null,
+        } });
+      }
+      // As the edge does: the assistant's files come from the site, under the demo's own address.
+      if (url.pathname === '/_guide/guide.js') return route.fulfill({ contentType: 'text/javascript; charset=utf-8', body: await (await page.request.get('/static/guide.js')).text() });
+      if (url.pathname === '/_guide/guide.css') return route.fulfill({ contentType: 'text/css', body: await (await page.request.get('/static/guide.css')).text() });
+      // What the edge sends for a demo's page: the demo's own markup, and one script tag.
+      return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><title>the demo</title><body><div id="root">demo</div><script src="/_guide/guide.js" data-css="/_guide/guide.css" data-site="${baseURL}" data-here="Redacted" data-viewing="redacted/07-demo#what-does-a-visitor-see" defer></script></body>` });
+    });
+    // Without the switch it does nothing at all.
+    await page.goto('http://demo.test/');
+    await expect(page.getByRole('button', { name: 'Ask Martin’s assistant' })).toHaveCount(0);
+
+    await page.goto(`http://demo.test/?tour=play#guide=${'c'.repeat(24)}`);
+    await expect(page).toHaveURL('http://demo.test/?tour=play'); // read once, then gone from the address
+    const panel = page.getByRole('dialog', { name: 'Martin’s assistant' });
+    await expect(panel).toContainText('I’ve come along from Martin’s site');
+    await expect(panel).toContainText('here in Redacted');
+    await panel.getByLabel('Your question').fill('Why did the text turn into bars?');
+    await panel.getByLabel('Your question').press('Enter');
+    await expect(panel).toContainText('The bars are sent in place of the text.');
+    expect(asked).toEqual([{ message: 'Why did the text turn into bars?', conversation: 'c'.repeat(24), viewing: 'redacted/07-demo#what-does-a-visitor-see' }]);
+    // A place on the site is a link that opens beside the demo, never a jump away from it.
+    const source = panel.getByRole('link', { name: 'Redacted · How it works' });
+    await expect(source).toHaveAttribute('href', `${baseURL}/projects/redacted#solution`);
+    await expect(source).toHaveAttribute('target', '_blank');
+    await expect(page).toHaveURL('http://demo.test/?tour=play');
+    await expect(panel.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', `${baseURL}/privacy#assistant`);
+  });
+});
+
 // A project's architecture page: parts in lanes, wires drawn between them, and a walk-through
 // that lights one connection at a time.
 test.describe('the architecture page', () => {

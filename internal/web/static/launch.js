@@ -85,7 +85,8 @@
   function open(url) {
     track('demo_open');
     state.textContent = `Opening ${name}…`;
-    location.assign(url);
+    // With the assistant in use, it comes along into a demo it can follow into (guide.js).
+    location.assign(url === demo && window.lighthouseGuide ? window.lighthouseGuide.carry(url) : url);
   }
 
   // Open automatically only when both the demo and the visitor are ready, and there is no choice

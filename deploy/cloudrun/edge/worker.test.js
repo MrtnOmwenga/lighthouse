@@ -8,7 +8,7 @@ const env = {
   PAGE_HOSTS: JSON.stringify(["site.example"]),
   EDGE_SECRETS: JSON.stringify({ "site.example": "s3cret", "demo.site.example": "demo-s3cret", guide: "guide-s3cret" }),
   CRON: JSON.stringify({ "demo.site.example": ["/internal/housekeeping"] }),
-  GUIDE: JSON.stringify({ host: "site.example", path: "/api/guide", origin: "https://guide.lambda.example" }),
+  GUIDE: JSON.stringify({ host: "site.example", path: "/api/guide", origin: "https://guide.lambda.example", demos: { "demo.site.example": { name: "Demo", viewing: "demo/07-demo#what-does-a-visitor-see" } } }),
 };
 const html = (text) => new Response(`<html><body><main>${text}</main></body></html>`, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=30" } });
 
@@ -180,3 +180,85 @@ test("when the assistant's service can't be reached, the visitor is told so, pla
   assert.equal(res.status, 200);
   assert.equal((await res.json()).kind, "limit");
 });
+
+test("the assistant's service may sit under a path of its own, and one that is off or blocked is resting, not broken", async () => {
+  const staged = { ...env, GUIDE: JSON.stringify({ host: "site.example", path: "/api/guide", origin: "https://abc.execute-api.example/live/" }) };
+  const post = () => worker.fetch(new Request("https://site.example/api/guide", { method: "POST", body: "{}", headers: { Origin: "https://site.example" } }), staged, { waitUntil() {} });
+  origin = () => new Response(JSON.stringify({ kind: "answer", text: "Yes." }), { status: 200 });
+  assert.equal((await (await post()).json()).kind, "answer");
+  assert.equal(calls[0].url, "https://abc.execute-api.example/live/api/guide");
+  for (const status of [429, 403, 500, 502, 504]) {
+    origin = () => new Response(JSON.stringify({ Reason: "ConcurrentInvocationLimitExceeded", message: "Forbidden" }), { status });
+    const res = await post();
+    assert.equal(res.status, 200);
+    assert.deepEqual([(await res.json()).kind, status], ["limit", status]);
+  }
+  origin = () => new Response(JSON.stringify({ error: "too large" }), { status: 413 });
+  assert.equal((await post()).status, 413); // the service's own verdict on a request is passed on
+});
+
+test("the assistant follows a visitor into a demo: its files come from the site, and questions go to its service", async () => {
+  const ctx = { waitUntil() {} };
+  origin = () => new Response("// the script", { status: 200, headers: { "Content-Type": "text/javascript" } });
+  const script = await worker.fetch(new Request("https://demo.site.example/_guide/guide.js", { headers: { Cookie: "session=1" } }), env, ctx);
+  assert.equal(await script.text(), "// the script");
+  assert.equal(calls[0].url, "https://site.run.app/static/guide.js"); // the site's copy, not the demo's
+  assert.equal(calls[0].headers.get("Cookie"), null);
+  assert.equal(calls[0].headers.get("X-Edge-Secret"), null);
+  await worker.fetch(new Request("https://demo.site.example/_guide/guide.css"), env, ctx);
+  assert.equal(calls[1].url, "https://site.run.app/static/guide.css");
+  for (const path of ["/_guide/../static/style.css", "/_guide/other.js", "/_guide/"]) {
+    assert.equal((await worker.fetch(new Request(`https://demo.site.example${path}`), env, ctx)).status === 200 && calls.length > 2 && calls.at(-1).url.startsWith("https://site.run.app"), false, path);
+  }
+
+  calls.length = 0;
+  origin = () => new Response(JSON.stringify({ kind: "answer", text: "Yes." }), { status: 200 });
+  const ask = (headers) => worker.fetch(new Request("https://demo.site.example/_guide/ask", { method: "POST", body: "{}", headers }), env, ctx);
+  assert.equal((await ask({ Origin: "https://site.example" })).status, 403); // each host's own pages only
+  assert.equal((await ask({ Origin: "https://demo.site.example", Cookie: "session=1" })).status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://guide.lambda.example/api/guide");
+  assert.equal(calls[0].headers.get("X-Edge-Secret"), "guide-s3cret");
+  assert.equal(calls[0].headers.get("Cookie"), null);
+
+  // On the site itself /_guide/ is nothing special, and on a host that isn't a demo neither is it.
+  calls.length = 0;
+  origin = () => new Response("x", { status: 404 });
+  await worker.fetch(new Request("https://site.example/_guide/guide.js"), env, ctx);
+  assert.equal(calls[0].url, "https://site.run.app/_guide/guide.js");
+});
+
+test("a demo's page leaves with the assistant's script added, and nothing else of the demo's is touched", async () => {
+  // Cloudflare's HTMLRewriter, as far as this uses it: append to the end of <body>.
+  globalThis.HTMLRewriter = class {
+    on(selector, handlers) { this.selector = selector; this.handlers = handlers; return this; }
+    transform(response) {
+      let added = "";
+      this.handlers.element({ append: (markup, options) => { added = options.html ? markup : ""; } });
+      const body = new ReadableStream({ async start(controller) {
+        controller.enqueue(new TextEncoder().encode((await response.text()).replace("</body>", `${added}</body>`)));
+        controller.close();
+      } });
+      return new Response(body, response);
+    }
+  };
+  try {
+    origin = () => new Response("<html><body><div id=root></div></body></html>", { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    const page = await worker.fetch(new Request("https://demo.site.example/"), env, { waitUntil() {} });
+    const text = await page.text();
+    assert.match(text, /<script src="\/_guide\/guide\.js" data-css="\/_guide\/guide\.css" data-site="https:\/\/site\.example" data-here="Demo" data-viewing="demo\/07-demo#what-does-a-visitor-see" defer><\/script><\/body>/);
+
+    // Not HTML, not a GET, or not a demo: passed through as it came.
+    const json = new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    origin = () => json;
+    assert.equal(await worker.fetch(new Request("https://demo.site.example/api/x"), env, { waitUntil() {} }), json);
+    origin = () => new Response("<html><body></body></html>", { status: 200, headers: { "Content-Type": "text/html" } });
+    const posted = await worker.fetch(new Request("https://demo.site.example/", { method: "POST", body: "x" }), env, { waitUntil() {} });
+    assert.equal(await posted.text(), "<html><body></body></html>");
+    const site = await worker.fetch(new Request("https://site.example/console/"), env, { waitUntil() {} });
+    assert.equal(await site.text(), "<html><body></body></html>"); // the site loads its own copy, in its own pages
+  } finally {
+    delete globalThis.HTMLRewriter;
+  }
+});
+

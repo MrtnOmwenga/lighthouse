@@ -130,6 +130,7 @@ profile:
 projects:
   - slug: redacted
     name: Redacted
+    guide_follows: true
     kicker: Redacted · Security · Live demo · Secrets black out mid-sentence
     headline: "Multi-tenant access control where hidden text is never sent: PostgreSQL row-level security and 605 tests"
     standfirst: >-
@@ -196,6 +197,11 @@ projects:
 
   - slug: ghostchat
     name: GhostChat
+    guide_absent: >-
+      I don't follow you into GhostChat, and that is on purpose. GhostChat promises that the code
+      running in your browser is exactly the code that was published, and lets you check it. A
+      script of mine added to its page would break that promise, and it would sit beside your
+      private keys. Ask me about GhostChat here instead, or open its architecture page.
     kicker: GhostChat · Cryptography · Live demo · Leak-proof
     headline: "End-to-end encrypted chat that stays private if its own server is breached, with a verifiable key log"
     plain: >-
