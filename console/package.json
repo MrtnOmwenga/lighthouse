@@ -10,18 +10,18 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "vue": "^3.5.43",
-    "vue-router": "^5.3.1"
+    "vue": "^3.5.45",
+    "vue-router": "^5.4.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.63.0",
-    "@vitejs/plugin-vue": "^6.0.9",
+    "@vitejs/plugin-vue": "^6.0.10",
     "@vue/test-utils": "^2.5.1",
-    "jsdom": "^30.1.1",
+    "jsdom": "^31.0.0",
     "typescript": "~5.9",
-    "vite": "^8.3.2",
-    "vitest": "^5.0.3",
-    "vue-tsc": "^3.3.11"
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0",
+    "vue-tsc": "^3.3.14"
   }
 }
